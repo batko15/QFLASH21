@@ -26,7 +26,7 @@ AJ="${AJ:-/home/z/android-build/tools/android-34/android.jar}"
 KS="${KS:-$SRC_DIR/qflash21-v12.keystore}"
 KS_ALIAS="qflash21"
 KS_PASS="${KS_PASS:-Qflash21-2026!Twa}"
-OUT_APK="${OUT_APK:-QFLASH21-v1.3.0.apk}"
+OUT_APK="${OUT_APK:-QFLASH21-v1.3.1.apk}"
 
 # AARs entpacken (classes.jar/res), falls noch nicht geschehen
 ensure_lib() {
@@ -81,9 +81,45 @@ fi
 (cd "$BUILD/classes" && zip -qr "$BUILD/app-classes.jar" .)
 
 echo "==> 4/7 DEX erzeugen (d8, multidex-fähig)"
-d8inputs=("$BUILD/app-classes.jar" "${libjars[@]}")
+# EXPLIZITE Runtime-Jars: Bewusst OHNE ecj.jar (Eclipse-Compiler – nur für javac-lose
+# Builds gedacht, gehörte in v1.3.0 fälschlich im DEX → 6,5 MB/classes.dex-Bloat).
+d8inputs=("$BUILD/app-classes.jar"
+  "$LIBS/aabh/classes.jar"
+  "$LIBS/browser/classes.jar"
+  "$LIBS/core/classes.jar"
+  "$LIBS/vp/classes.jar"
+  "$LIBS/lrt/classes.jar"
+  "$LIBS/interp/classes.jar"
+  "$LIBS/ann.jar"
+  "$LIBS/annexp.jar"
+  "$LIBS/cf.jar"
+  "$LIBS/coll.jar"
+  "$LIBS/lc.jar"
+  "$LIBS/lfut.jar"
+  "$LIBS/kotlin-stdlib.jar")
+for d in "${d8inputs[@]}"; do
+  [ -f "$d" ] || { echo "FEHLT: $d" >&2; exit 1; }
+done
 "$BT/d8" --release --lib "$AJ" --min-api 24 --output "$BUILD/dexout" "${d8inputs[@]}"
 ls "$BUILD/dexout"
+
+# SICHERHEITSKLEMME (Fix für v1.3.0-Absturz): Die im Manifest deklarierten Klassen
+# MÜSSEN im DEX vorhanden sein – sonst startet die App und schließt sofort.
+echo "==> 4b/7 DEX-Klassen-Verifikation"
+for cls in 'de/qflash21/app/MainActivity' 'de/qflash21/app/QfApp' \
+           'de/qflash21/app/CrashActivity' 'com/google/androidbrowserhelper/trusted/LauncherActivity'; do
+  found=0
+  for d in "$BUILD"/dexout/classes*.dex; do
+    # ACHTUNG: kein 'grep -q' unter pipefail! -q schließt die Pipe beim Treffer,
+    # dexdump stirbt an SIGPIPE (Status 141) → pipeline = „nicht gefunden".
+    if "$BT/dexdump" "$d" 2>/dev/null | grep "L$cls;" >/dev/null; then found=1; break; fi
+  done
+  if [ "$found" -ne 1 ]; then
+    echo "BUILD ABGEBROCHEN: Klasse '$cls' fehlt im DEX! (v1.3.0-Fehlerklasse)" >&2
+    exit 1
+  fi
+  echo "    ✓ $cls"
+done
 
 echo "==> 5/7 APK packen"
 cp "$BUILD/base.apk" "$BUILD/packed.apk"
@@ -104,6 +140,9 @@ fi
   --ks-pass "pass:$KS_PASS" --key-pass "pass:$KS_PASS" \
   --out "$BUILD/$OUT_APK" "$BUILD/aligned.apk"
 "$BT/apksigner" verify --print-certs "$BUILD/$OUT_APK" | head -8
+
+# Signatur-/Versions-Sanity-Check ( muss de.qflash21.app + versionCode 41 zeigen )
+"$BT/aapt" dump badging "$BUILD/$OUT_APK" 2>/dev/null | grep -E "^(package:|launchable-activity:)"
 
 cp "$BUILD/$OUT_APK" "$SRC_DIR/$OUT_APK"
 echo "==> FERTIG: apk-src/$OUT_APK ($(du -h "$SRC_DIR/$OUT_APK" | cut -f1))"

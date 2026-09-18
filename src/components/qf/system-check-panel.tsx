@@ -38,8 +38,8 @@ import {
 } from '@/lib/kwp/webusb-serial';
 
 /** Aktuelle Web-App-Version (parallel zur APK-Version halten) */
-const APP_VERSION = '1.3.0';
-const APK_URL = '/apk/QFLASH21-v1.3.0.apk';
+const APP_VERSION = '1.3.1';
+const APK_URL = '/apk/QFLASH21-v1.3.1.apk';
 
 type Status = 'ok' | 'warn' | 'fail' | 'info';
 
@@ -231,7 +231,7 @@ export function SystemCheckPanel() {
       ? {
           status: 'fail',
           title: 'Kein USB-Serial-Pfad verfügbar',
-          text: 'Google Chrome installieren (Play Store) und diese Seite darin öffnen – oder die QFLASH21-APK v1.3.0 installieren.',
+          text: 'Google Chrome installieren (Play Store) und diese Seite darin öffnen – oder die QFLASH21-APK v1.3.1 installieren.',
         }
       : env.serial && usbSerialNative
         ? {

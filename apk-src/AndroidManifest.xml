@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="de.qflash21.app"
-    android:versionCode="40"
-    android:versionName="1.3.0">
+    android:versionCode="41"
+    android:versionName="1.3.1">
 
   <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34"/>
 
@@ -21,6 +21,7 @@
   </queries>
 
   <application
+      android:name=".QfApp"
       android:label="QFLASH21"
       android:icon="@mipmap/ic_launcher"
       android:allowBackup="false"
@@ -36,6 +37,10 @@
          hatte einen anderen Signaturschlüssel (v1.0–v1.1), was Upgrades mit
          „App wurde nicht installiert" blockierte. Installiert daher neben allen
          älteren Versionen konfliktfrei.
+
+         v1.3.1 KRITISCHER FIX: MainActivity liegt jetzt WIRKLICH im Package
+         de.qflash21.app (v1.3.0 hatte sie noch unter de.qflash21.launcher im
+         DEX → ClassNotFoundException → „startet und schließt sofort").
     -->
     <activity
         android:name=".MainActivity"
@@ -67,8 +72,18 @@
         android:value="#000000"/>
     <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BGCOLOR"
         android:value="#09090B"/>
-    <!-- Ohne verifizierte Domain (oder ohne TWA-Provider) als Custom Tab öffnen -->
+    <!-- Ohne verifizierte Domain oder ohne Chrome: eingebetteter WebView-Fallback,
+         damit die App NIE sofort schließt (Web Serial erst in Chrome verfügbar –
+         der WebView zeigt dann den Hinweis „In Chrome öffnen" aus der Web-App). -->
     <meta-data android:name="android.support.customtabs.trusted.FALLBACK_STRATEGY"
-        android:value="customtabs"/>
+        android:value="webview"/>
+
+    <!-- Nativer Fallback (browserhelper): WebView-Rendering ohne Chrome -->
+    <activity
+        android:name="com.google.androidbrowserhelper.trusted.WebViewFallbackActivity"
+        android:exported="false"
+        android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode"/>
+
+    <!-- Deutscher Fehlerbericht statt stummem Verschwinden (siehe QfApp.java) -->
   </application>
 </manifest>
