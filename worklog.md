@@ -223,3 +223,27 @@ Stage Summary:
 - Nicht gefunden (explizit): konkrete 17xxx→Klartext-DTC-Tabelle (A), konkrete Byte-Layouts der Blöcke 0x03/0x07/0x13/0x15/0x17 (B) – beides steckt in DDE4-SGBD, nicht auf GitHub; Ersatzfunde: SAE-J2012-Struktur + 28-Byte-FSP-Eintrag + LID-0x20–0x2F-Mechanik
 - Top-3-Quellen: Bosch-PDF @ GabrielStanescu/BMW_M57_EDC15C4 · Mursteinen/BMW-DDE4-EDC15c4-EcuID · Dekon01/DeepObdE46Config
 - Nächste Schritte: Keywords gegen echte QFLASH21-Logs verifizieren; EWS-Routine + LID-Scan als Features; SGBD-Beschaffung für B/A
+
+---
+Task ID: 7
+Agent: Z.ai Code (Hauptagent)
+Task: Massive Erweiterung + Fehler-Suche + GitHub-Deep-Search („optimiere die app … erweitere es massiv … suche nach fehler. github deep search")
+
+Work Log:
+- **Parallel-Agenten:** 7-a (GitHub-Research, docs/research/github-findings.md) + 7-b (Code-Review, tools/bug-report.md, 20 Funde: 3 kritisch/5 hoch/7 mittel/5 niedrig).
+- **Alle 20 Bugs behoben:** kritisch (1) writeFlash schrieb CAL an 0x000000 → jetzt Bildtyp-abhängige Adresse (CAL→0x74000) + Protected-Area-Check + Boot-16KiB-Vergleich gegen Backup; (2) close() gibt Reader-Lock jetzt frei (Auto-Reconnect an echter Hardware repariert); (3) KeepAlive-Sessionverlust schließt Client. Hoch: 0x78 re-armt Deadline (10 s, pendingTimeoutMs), Write-Ack-Sequenzvalidierung, Resync-Log-Throttle (250 ms) + sleep(2), Request-Mutex im SerialClient + pollLiveOnce busy-Guard, Spannungswarnung <12 V (warnTo statt warnFrom, Gauge-Warnzone). Mittel/Niedrig: analyze-dtc liest Body nur 1×, CSV/TSV Round-Robin-sicher mit Block-Spalte, Mock verweigert unvollständigen Download (NRC 0x24) + Overflow-Guard, Live-Parser need()-Längenguards, /api/logs NaN-Limit, onDisconnect-Guard nur connected/initializing, closing-Flag gegen Spurious-Toast, NRC ?? 0xff, CAL-BOOT-Badge, lastVoltage-Reset, File-Input-Reset, connectGeneration gegen ECU-Reset-Race.
+- **Research-Integration (Task 7-a, Bosch EDC15C B079.CC0 + Mursteinen-Dumps):**
+  - 5-Baud-Init Bosch-korrekt: Sync 0x55 + KW1=0x6B/KW2=0x8F (vorher 0x45/0x05!), Tester sendet nur ~KW2, Ack = invertierte Adresse als Roh-Byte (drainInitAck verwirft Roh-Bytes).
+  - EWS-Startwertinitialisierung 0x31/83 als 2 Danger-Jobs (REYO 00 jungfräulich/01 gebraucht) + Verifybyte-Interpretation (00 bereit/01 gespeichert/02 kein Startwert/03 Urcode zerstört) + EWS-Status RLI 0x06 im Mock.
+  - Messwertblock-Scan LID 0x20–0x2F (16 Blöcke à 10 Wörter, Bosch-Standard) als neuer Jobs-Card mit HEX-Tabelle; Mock synthetisiert Wörter.
+  - SW-Nummer-Extraktion aus 512-KiB-Backup @0x7BFB4 (6 ASCII-Digits, 0xC3-terminiert, an 4 echten Dumps verifizierte Methode) mit Abgleich gegen Ident-SW im Flash-Panel.
+- **Verifikation:** lint 0/0, tsc sauber. E2E (agent-browser): neue Bosch-Init → Simulator-Verbindung OK, Ident (SW V41 7759), DTC (3), Flash-Lesen 512 KiB, LID-Scan (0x20+ antworten), EWS-Routine → „EWS-Verifybyte 0x00: DDE bereit". Commit 6a77ff5 gepusht.
+
+Stage Summary:
+- Größte Einzelrunde: 20 Bugfixes + Bosch-Doku-konformes Protokoll + 3 neue Funktionen. Auto-Reconnect an echter Hardware ist damit ERST JETZT wirklich funktionsfähig (Lock/Close-Bugs).
+- Research-Artefakte: docs/research/github-findings.md (Quellen: GabrielStanescu/BMW_M57_EDC15C4 mit Bosch-PDF, Mursteinen/BMW-DDE4-EDC15c4-EcuID mit 23 Dumps, Dekon01/DeepObdE46Config mit DeepOBD-XSD).
+
+Nächste Schritte:
+1. Fahrzeug-Realtest: initiale Keywords am echten DDE4 loggen (6B/8F bestätigen?)
+2. Kennfeld-Raster-Viewer + Session-Profile in DB (Anschlussrunde)
+3. DeepOBD.rar (Nutzer) – weiterhin nicht angekommen; DeepOBD-ccpage-Schale wäre via XSD-Format integrierbar
