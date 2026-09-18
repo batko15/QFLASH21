@@ -1,12 +1,75 @@
 # QFLASH21 Android-APK
 
-## v2.0.0 – ECHTE NATIVE APP (empfohlen, ersetzt alle TWA-Versionen)
+## v2.1.0 – STANDALONE (empfohlen: komplett eigenständig, 100 % offline)
 
 | Datei | Zweck |
 |---|---|
-| `QFLASH21-v2.0.0.apk` | **Empfohlen**: Native App mit eigener USB-Treiberschicht (FTDI/CH340/CP2102) |
-| Web-Direktlink | `https://qflashk.vercel.app/apk/QFLASH21-v2.0.0.apk` |
-| GitHub Release | `https://github.com/batko15/QFLASH21/releases/tag/v2.0.0` |
+| `QFLASH21-v2.1.0.apk` | **Empfohlen**: Komplette App mit EINGEBETTETER Website (~9 MB) – funktioniert im Flugmodus |
+| Web-Direktlink | `https://qflashk.vercel.app/apk/QFLASH21-v2.1.0.apk` |
+| GitHub Release | `https://github.com/batko15/QFLASH21/releases/tag/v2.1.0` |
+
+### Architektur v2.1.0 (versionCode 51, ~9 MB, Android 7.0+)
+
+```
+MainActivity (WebView → http://127.0.0.1:<Port>)
+  ├─ QfAssetServer (Thread-per-Connection, nur 127.0.0.1, Pfad-Traversal-Schutz)
+  │    ├─ assets/www/index.html + _next/static/immutable/** (gesamte Web-App)
+  │    ├─ assets/www/downloads/DeepOBD-Konfigs-M57-M47.zip (via DownloadManager nach Downloads/)
+  │    ├─ /api/logs        → Operationshistorie LOKAL (filesDir/operation-log.json, max. 500)
+  │    ├─ /api/analyze-dtc → offline-Werkstatt-Hinweise (Regeltabelle = Server-Fallback)
+  │    └─ /sw.js → bewusst 404 (kein Service Worker nötig – alles ist lokal)
+  └─ SerialBridge  (addJavascriptInterface → window.QfSerialBridge)
+       ├─ FtdiDriver    SIO-Requests 1:1 aus ftdi_sio.c  (Reset/Purge/Baud/SET_DATA/Latency/DTR-RTS)
+       ├─ Ch340Driver   ch341.c-Register (0x5F/0xA1/0x9A·0x1312/0x2518/0xA4, BREAK 0x1805)
+       └─ Cp2102Driver  cp210x.c-Requests (0x1E Baud u32-LE, 0x03 LINE_CTL, 0x07 MHS, 0x16 BREAK)
+            └─ Android USB-Host-API (UsbManager → bulkTransfer) → K+DCAN per USB-OTG
+```
+
+**Warum Standalone?** v2.0.0 lud die Oberfläche von `qflashk.vercel.app` – ohne
+Internet bzw. ohne Website lief die App nicht (und jede Änderung an der Website
+veränderte das App-Verhalten). v2.1.0 beendet diese Abhängigkeit ENDGÜLTIG:
+
+- **Gesamte Web-App eingebettet** (`scripts/snapshot-site.sh` spiegelt die
+  Produktionssite nach `apk-src/assets/www/` und patcht die Version auf die
+  APK-Version) – die App verhält sich IMMER wie beim Build, egal was online passiert.
+- **Lokaler Server statt Internet:** `usesCleartextTraffic="true"` betrifft NUR den
+  Loopback `127.0.0.1`; fester Port (21921 ff.) → localStorage/Einstellungen bleiben
+  über App-Starts erhalten.
+- **Keine Auto-Verify-Deep-Links mehr** (Loop-Gefahr) – die App ist rein lokal.
+- Downloads über den **System-DownloadManager** (kann den App-Loopback erreichen).
+- USB-Treiberschicht unverändert nativ (FTDI/CH340/CP2102, 5-Baud-Init über BREAK,
+  RX-Pump mit 64-KB-Ringpuffer + Status-Byte-Stripping, USB-Detach-Event).
+- Gleiche Paket-ID `de.qflash21.app` + Signatur `6c62fd…` wie v1.3.x/v2.0.0 →
+  sauberes Upgrade ohne Deinstallation.
+
+**Build (2 Schritte):**
+
+```bash
+bash scripts/snapshot-site.sh     # 1) Produktionssite → apk-src/assets/www/ (11 MB, 18 Dateien)
+bash scripts/build-native-apk.sh  # 2) aapt2(-A assets) → javac/ecj → d8 → DEX-Checks →
+                                  #    Asset-Checks → zipalign → apksigner  →  QFLASH21-v2.1.0.apk
+```
+
+Build-Sicherheitsklemmen: 9 Klassen im DEX (inkl. neuem `QfAssetServer`),
+`assets/www/index.html` + ≥ 8 `_next`-Dateien + Konfigs-ZIP im APK – sonst Abbruch.
+
+### Installation v2.1.0
+
+1. APK herunterladen und öffnen (Dateimanager → Downloads). Upgrade über v2.0.0/v1.3.x direkt möglich.
+2. MagicOS (Honor): ggf. „Reiner Modus" (Pure Mode) deaktivieren – blockiert Sideloads.
+3. Play-Protect-Hinweis mit „Trotzdem installieren" bestätigen.
+4. K+DCAN-Kabel per USB-OTG anschließen → App öffnet (auch im Flugmodus) →
+   Tab „Verbindung" → „Verbinden" → beim ersten Mal USB-Berechtigung bestätigen.
+5. Tab „System-Check" zeigt **„Bereit – Standalone-App (USB-Host-API, 100 % offline)"** (grün).
+6. DeepOBD-Konfigs: Tab „DDE4-Konfigs" → Download landet offline in `Downloads/`.
+
+---
+
+## v2.0.0 – NATIVE APP (Legacy: lädt die Website aus dem Internet)
+
+| Datei | Zweck |
+|---|---|
+| `QFLASH21-v2.0.0.apk` | Legacy: Native USB-Treiber, aber Oberfläche kam von qflashk.vercel.app (99 KB) |
 
 ### Architektur v2.0.0 (versionCode 50, ~100 KB, Android 7.0+)
 

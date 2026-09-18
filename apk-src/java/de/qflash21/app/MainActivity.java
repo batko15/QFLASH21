@@ -2,6 +2,7 @@ package de.qflash21.app;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.DownloadManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -11,35 +12,43 @@ import android.hardware.usb.UsbManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.webkit.DownloadListener;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
+
+import java.io.IOException;
 
 /**
- * QFLASH21 v2.0 – ECHTE native Android-App.
+ * QFLASH21 v2.1.0 – STANDALONE (komplett eigenständige Android-App).
  *
  * Architektur:
- *  - Native Activity mit WebView (lädt die QFLASH21-Weboberfläche)
- *  - SerialBridge (addJavascriptInterface): stellt die Android USB-Host-API
- *    als "window.QfSerialBridge" bereit – FTDI/CH340/CP2102 DIREKT vom
- *    Android-Kernel-Weg, ohne Chrome, ohne Web Serial, ohne TWA-Verifikation.
- *  - Damit funktioniert das K+DCAN-Kabel auf JEDEM Android-Gerät ab 7.0,
- *    unabhängig von installierter Chrome-Version.
+ *  - QfAssetServer serviert die KOMPLETT in die APK eingebettete Web-App
+ *    (assets/www/ – inkl. aller Chunks, Bilder und DeepOBD-Konfigs) über
+ *    http://127.0.0.1:&lt;Port&gt; an die WebView. Kein Internet, keine Website,
+ *    kein Chrome nötig – die App funktioniert im Flugmodus.
+ *  - SerialBridge (addJavascriptInterface "QfSerialBridge"): Android USB-Host-
+ *    API als window.QfSerialBridge – FTDI/CH340/CP2102 NATIV für das
+ *    K+DCAN-Kabel per USB-OTG.
+ *  - /api/logs + /api/analyze-dtc werden lokal im QfAssetServer bedient
+ *    (Operationshistorie im App-Speicher, offline-Werkstatt-Hinweise).
+ *  - Downloads (z. B. DeepOBD-Konfigs-ZIP) laufen über den System-DownloadManager
+ *    – der kann 127.0.0.1 der App erreichen und speichert nach Downloads/.
  *
- * v1.3.x war eine Trusted Web Activity (TWA) – abhängig von Chrome/Custom-Tabs
- * und Domain-Verifikation. Das erwies sich auf dem Zielsystem als fehleranfällig.
+ * Historie: v1.x war eine TWA (abhängig von Chrome + Domain-Verifikation),
+ * v2.0.0 lud die Website aus dem Internet. v2.1.0 braucht GAR NICHTS mehr –
+ * alles ist an Bord.
  */
 public class MainActivity extends Activity {
 
-    static final String START_URL = "https://qflashk.vercel.app/?app=native";
-    private static final String ALLOWED_HOST = "qflashk.vercel.app";
-
     private WebView webView;
     private SerialBridge bridge;
+    private QfAssetServer assetServer;
     private boolean crashed = false;
 
-    @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         try {
@@ -59,7 +68,13 @@ public class MainActivity extends Activity {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private void setup(Bundle savedInstanceState) {
+    private void setup(Bundle savedInstanceState) throws IOException {
+        // 1) Lokaler Server für die eingebettete Web-App (fester Port → localStorage bleibt erhalten)
+        assetServer = new QfAssetServer(this);
+        int port = assetServer.start();
+        String startUrl = "http://127.0.0.1:" + port + "/";
+
+        // 2) WebView
         webView = new WebView(this);
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -73,8 +88,8 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // Nur QFLASH21 in der App – alles andere (z. B. GitHub) extern im Browser
-                if (url != null && url.contains(ALLOWED_HOST)) return false;
+                // Nur die lokale App-Oberfläche im WebView – alles andere extern im Browser
+                if (url != null && url.startsWith("http://127.0.0.1:")) return false;
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
                 } catch (Throwable ignored) {
@@ -84,6 +99,33 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 3) Downloads (DeepOBD-Konfigs-ZIP etc.) über den System-DownloadManager
+        webView.setDownloadListener(new DownloadListener() {
+            @Override
+            public void onDownloadStart(String url, String userAgent, String contentDisposition,
+                                        String mimetype, long contentLength) {
+                try {
+                    String name = Uri.parse(url).getLastPathSegment();
+                    if (name == null || name.length() == 0) name = "qflash21-download";
+                    DownloadManager.Request r = new DownloadManager.Request(Uri.parse(url));
+                    r.setTitle(name);
+                    r.setDescription("QFLASH21 Standalone");
+                    r.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    r.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name);
+                    DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                    if (dm != null) {
+                        dm.enqueue(r);
+                        Toast.makeText(MainActivity.this, "Download gestartet: " + name,
+                                Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Throwable t) {
+                    Toast.makeText(MainActivity.this, "Download nicht möglich: " + t.getMessage(),
+                            Toast.LENGTH_LONG).show();
+                }
+            }
+        });
+
+        // 4) Native USB-Serial-Bridge für das K+DCAN-Kabel
         bridge = new SerialBridge(this);
         webView.addJavascriptInterface(bridge, "QfSerialBridge");
 
@@ -91,7 +133,7 @@ public class MainActivity extends Activity {
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
         } else {
-            webView.loadUrl(START_URL);
+            webView.loadUrl(startUrl);
         }
     }
 
@@ -158,6 +200,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (bridge != null) bridge.shutdown();
+        if (assetServer != null) assetServer.stop();
         if (webView != null) {
             try {
                 webView.destroy();

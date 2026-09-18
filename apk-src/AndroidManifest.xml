@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="de.qflash21.app"
-    android:versionCode="50"
-    android:versionName="2.0.0">
+    android:versionCode="51"
+    android:versionName="2.1.0">
 
   <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34"/>
 
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
-  <!-- USB-Host: D+KCAN-Kabel (FTDI/CH340/CP2102) direkt per Android USB-Host-API.
+  <!-- USB-Host: K+DCAN-Kabel (FTDI/CH340/CP2102) direkt per Android USB-Host-API.
        required=false: App bleibt auf Geräten ohne USB-Host installierbar. -->
   <uses-feature android:name="android.hardware.usb.host" android:required="false"/>
 
@@ -19,16 +19,21 @@
       android:icon="@mipmap/ic_launcher"
       android:allowBackup="false"
       android:supportsRtl="true"
-      android:usesCleartextTraffic="false"
+      android:usesCleartextTraffic="true"
       android:theme="@android:style/Theme.Material.NoActionBar">
 
     <!--
-      v2.0.0 – ECHTE NATIVE APP (ersetzt die TWA-Architektur v1.x):
-      - WebView lädt die QFLASH21-Weboberfläche
-      - SerialBridge (window.QfSerialBridge) exponiert die Android USB-Host-API
-        → FTDI FT232R/FT231X, CH340, CP2102 NATIV, ohne Chrome / Web Serial / TWA
-      - Kein Custom-Tabs-, kein assetlinks-, kein Chrome-Version-Abhängigkeit mehr
-      - Gleiche Paket-ID + Signatur wie v1.3.1 → sauberes Upgrade
+      v2.1.0 – STANDALONE (ersetzt v2.0.0 „Website im Netz"):
+      - QfAssetServer serviert die KOMPLETT EINGEBETTETE Web-App (assets/www/)
+        über http://127.0.0.1:<Port> → die App ist 100 % eigenständig:
+        kein Internet, keine Website, kein Chrome (Flugmodus OK).
+        usesCleartextTraffic="true" ist NUR für den lokalen Loopback-Server nötig.
+      - /api/logs (Operationshistorie) + /api/analyze-dtc (offline-Hinweise)
+        werden lokal im App-Speicher bedient.
+      - SerialBridge (window.QfSerialBridge): Android USB-Host-API für das
+        K+DCAN-Kabel (FTDI/CH340/CP2102) per USB-OTG – mit eigener
+        Treiberschicht inkl. BREAK-Signal für das 5-Baud-Init.
+      - Gleiche Paket-ID + Signatur wie v1.3.x/v2.0.0 → sauberes Upgrade
       - QfApp: globaler Crash-Handler → nativer deutscher Fehlerbericht
     -->
     <activity
@@ -40,12 +45,6 @@
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
-      </intent-filter>
-      <intent-filter android:autoVerify="true">
-        <action android:name="android.intent.action.VIEW"/>
-        <category android:name="android.intent.category.DEFAULT"/>
-        <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="https" android:host="qflashk.vercel.app"/>
       </intent-filter>
     </activity>
 

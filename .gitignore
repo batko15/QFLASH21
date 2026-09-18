@@ -75,3 +75,12 @@ apk-src/libs/interp/
 apk-src/libs/annexp/
 # Signaturschlüssel: nicht im Repo (Backup lokal / Sicherungsdienst)
 apk-src/*.keystore
+
+# Android-APK-Build-Artefakte (scripts/build-native-apk.sh)
+apk-src/build-native/
+
+# Eingebetteter Website-Snapshot (scripts/snapshot-site.sh) – vor jedem Build generieren
+apk-src/assets/
+
+# Zwischen-APKs im apk-src-Quellordner
+apk-src/*.apk

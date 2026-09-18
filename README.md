@@ -199,42 +199,52 @@ Web Serial (FTDI 0403:6001)
   → Ident / DTC / Live / Security / Flash-Services (ISO 14230-2)
 ```
 
-### Android-App v2.0.0 – ECHTE NATIVE APP (kein Browser, kein Chrome nötig)
+### Android-App v2.1.0 – STANDALONE (komplett eigenständig, 100 % offline)
 
-**Download:** `https://qflashk.vercel.app/apk/QFLASH21-v2.0.0.apk` (oder [apk/QFLASH21-v2.0.0.apk](apk/QFLASH21-v2.0.0.apk) im Repo / [GitHub Release v2.0.0](https://github.com/batko15/QFLASH21/releases/tag/v2.0.0)).
+**Download:** `https://qflashk.vercel.app/apk/QFLASH21-v2.1.0.apk` (oder [apk/QFLASH21-v2.1.0.apk](apk/QFLASH21-v2.1.0.apk) im Repo / [GitHub Release v2.1.0](https://github.com/batko15/QFLASH21/releases/tag/v2.1.0)).
 
-**v2.0.0 ist eine vollwertige native Android-App** und ersetzt die TWA-Architektur
-(v1.x) komplett – nach den wiederholten „funktioniert nicht"-Problemen (Signaturkonflikt,
-Start-Crash durch fehlerhafte DEX-Zusammensetzung, TWA-/Chrome-Abhängigkeiten):
+**v2.1.0 ist eine vollwertige, KOMPLETT eigenständige Android-App** – die gesamte
+Web-Oberfläche (alle Chunks, Bilder, Konfigs) ist **in die APK eingebettet** und wird
+von einem lokalen Server in der App selbst ausgeliefert. Die App funktioniert im
+**Flugmodus** – kein Internet, keine Website, kein Chrome, nichts:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  QFLASH21-App (de.qflash21.app, 100 KB, Android 7.0+)   │
-│                                                         │
-│  MainActivity (WebView)                                 │
-│   └─ lädt die gewohnte QFLASH21-Oberfläche              │
-│   └─ addJavascriptInterface("QfSerialBridge")           │
-│        │                                                │
-│  SerialBridge (Java, @JavascriptInterface)              │
-│   ├─ FtdiDriver   FT232R/FT231X  (0403:6001/6015)       │
-│   ├─ Ch340Driver  CH340/CH341    (1a86:7523)            │
-│   └─ Cp2102Driver CP2102         (10c4:ea60)            │
-│        │                                                │
-│  Android USB-Host-API (UsbManager/bulkTransfer)         │
-│   └─ K+DCAN-Kabel direkt per USB-OTG ✓                  │
-└─────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│  QFLASH21-App (de.qflash21.app, ~9 MB, Android 7.0+)          │
+│                                                               │
+│  MainActivity (WebView → http://127.0.0.1:<Port>)             │
+│   ├─ QfAssetServer: GESAMTE Web-App aus assets/www/           │
+│   │    (HTML + JS + CSS + Icons + DeepOBD-Konfigs-ZIP)        │
+│   │    + lokale /api/logs (Operationshistorie im App-Speicher)│
+│   │    + lokale /api/analyze-dtc (offline-Werkstatt-Hinweise) │
+│   └─ addJavascriptInterface("QfSerialBridge")                 │
+│        │                                                      │
+│  SerialBridge (Java, @JavascriptInterface)                    │
+│   ├─ FtdiDriver   FT232R/FT231X  (0403:6001/6015)             │
+│   ├─ Ch340Driver  CH340/CH341    (1a86:7523)                  │
+│   └─ Cp2102Driver CP2102         (10c4:ea60)                  │
+│        │                                                      │
+│  Android USB-Host-API (UsbManager/bulkTransfer)               │
+│   └─ K+DCAN-Kabel direkt per USB-OTG ✓                        │
+└───────────────────────────────────────────────────────────────┘
 ```
 
+- **100 % offline:** Der lokale `QfAssetServer` serviert die eingebettete Oberfläche
+  über `127.0.0.1` (fester Port → Einstellungen/localStorage bleiben erhalten).
+  Downloads (z. B. DeepOBD-Konfigs-ZIP) landen über den System-DownloadManager in
+  `Downloads/` – ebenfalls komplett offline.
 - **Kein Chrome, keine Web-Serial-API, keine Domain-Verifizierung** – die USB-Serial-
   Treiber laufen NATIV (Baudraten-/BREAK-Mathematik 1:1 aus dem Linux-Kernel:
   `ftdi_sio.c`, `ch341.c`, `cp210x.c`; identisch zur WebUSB-Portierung der Web-App).
-- Die Web-App erkennt die Bridge automatisch (`window.QfSerialBridge`) und nutzt sie
-  als bevorzugten Verbindungsweg (`src/lib/kwp/native-bridge.ts`).
+- Die eingebettete App erkennt die Bridge automatisch (`window.QfSerialBridge`) und
+  nutzt sie als bevorzugten Verbindungsweg (`src/lib/kwp/native-bridge.ts`).
 - Nativer **deutscher Fehlerbericht** bei jedem Crash (Stacktrace + „Fehler kopieren").
 - 5-Baud-Init über natives BREAK (FTDI SET_DATA Bit 14 / CH340 Registerpaar 0x1805 /
   CP210x SET_BREAK), 10400/38400/125000 Baud.
-- **Legacy:** TWA-APK v1.3.1 bleibt als Fallback verfügbar
-  ([apk/QFLASH21-v1.3.1.apk](apk/QFLASH21-v1.3.1.apk)).
+- Gleiche Paket-ID + Signatur wie v1.3.x/v2.0.0 (`6c62fd…`) → direktes Upgrade.
+- **Legacy:** v2.0.0 (Website online nötig) und TWA v1.3.1 bleiben verfügbar
+  ([apk/QFLASH21-v2.0.0.apk](apk/QFLASH21-v2.0.0.apk) /
+  [apk/QFLASH21-v1.3.1.apk](apk/QFLASH21-v1.3.1.apk)).
 - Details, Installations-Schritte (inkl. MagicOS „Reiner Modus") und Build-Anleitung:
   **[apk/README.md](apk/README.md)**.
 

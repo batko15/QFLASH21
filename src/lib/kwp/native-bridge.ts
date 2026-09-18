@@ -1,7 +1,7 @@
 /**
  * QFLASH21 – Native-App-Bridge (Android WebView addJavascriptInterface).
  *
- * Die QFLASH21-Android-App v2.0.0 exponiert die Android USB-Host-API als
+ * Die QFLASH21-Android-App v2.1.0 (STANDALONE) exponiert die Android USB-Host-API als
  * `window.QfSerialBridge` (Klasse SerialBridge in der APK). Über diese Bridge
  * laufen FTDI FT232R/FT231X, CH340 und CP2102 NATIV – ohne Chrome, ohne
  * Web Serial, ohne WebUSB und ohne TWA-Verifikation. Das K+DCAN-Kabel

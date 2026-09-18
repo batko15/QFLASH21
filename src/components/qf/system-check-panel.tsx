@@ -39,8 +39,8 @@ import {
 import { isNativeBridge, listNativeDevices, type QfNativeDeviceInfo } from '@/lib/kwp/native-bridge';
 
 /** Aktuelle Web-App-Version (parallel zur APK-Version halten) */
-const APP_VERSION = '2.0.0';
-const APK_URL = '/apk/QFLASH21-v2.0.0.apk';
+const APP_VERSION = '2.1.0';
+const APK_URL = '/apk/QFLASH21-v2.1.0.apk';
 
 type Status = 'ok' | 'warn' | 'fail' | 'info';
 
@@ -243,8 +243,8 @@ export function SystemCheckPanel() {
   const verdict: { status: Status; title: string; text: string } = env.native
     ? {
         status: 'ok',
-        title: 'Bereit – Native-App-Modus (USB-Host-API)',
-        text: 'QFLASH21-App v2 erkannt: Das K+DCAN-Kabel läuft NATIV über die Android USB-Host-API (FTDI/CH340/CP2102) – unabhängig von Chrome-Version. Kabel anschließen und „Verbinden“ tippen.',
+        title: 'Bereit – Standalone-App (USB-Host-API, 100 % offline)',
+        text: 'QFLASH21-App v2.1 erkannt: Das K+DCAN-Kabel läuft NATIV über die Android USB-Host-API (FTDI/CH340/CP2102). Die komplette Oberfläche ist EINGEBETTET – die App braucht kein Internet und keinen Chrome. Kabel anschließen und „Verbinden“ tippen.',
       }
     : !env.secure
     ? {
@@ -256,7 +256,7 @@ export function SystemCheckPanel() {
       ? {
           status: 'fail',
           title: 'Kein USB-Serial-Pfad verfügbar',
-          text: 'Die QFLASH21-APK v2.0.0 installieren (nativ, kein Chrome nötig) – oder Google Chrome und diese Seite darin öffnen.',
+          text: 'Die QFLASH21-APK v2.1.0 installieren (Standalone, kein Chrome/Internet nötig) – oder Google Chrome und diese Seite darin öffnen.',
         }
       : env.serial && usbSerialNative
         ? {
@@ -355,24 +355,25 @@ export function SystemCheckPanel() {
       {/* APK-Sektion */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Android-App (Nativ) v{APP_VERSION}</CardTitle>
+          <CardTitle className="text-base">Android-App (Standalone) v{APP_VERSION}</CardTitle>
           <CardDescription>
-            Echte App mit eigener USB-Treiberschicht (FTDI/CH340/CP2102) – funktioniert
-            OHNE Chrome und OHNE Web Serial auf jedem Android-Gerät ab 7.0.
+            Echte App mit eigener USB-Treiberschicht (FTDI/CH340/CP2102) und KOMPLETT
+            eingebetteter Oberfläche: 100 % offline, kein Chrome, kein Internet, keine
+            Website nötig. Läuft auf jedem Android-Gerät ab 7.0.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <Button asChild>
             <a href={APK_URL} download>
               <Download className="mr-2 h-4 w-4" aria-hidden />
-              APK v{APP_VERSION} herunterladen (nativ, ~100 KB)
+              APK v{APP_VERSION} herunterladen (Standalone, ~9 MB)
             </a>
           </Button>
           <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground">
             <li>
               <strong className="text-foreground">APK herunterladen und öffnen</strong>{' '}
-              (Dateimanager → Downloads). v2.0.0 installiert direkt über v1.3.x (gleiche
-              Signatur) – alte QFLASH21-Apps (v1.0–v1.2, andere Paket-ID) danach deinstallieren.
+              (Dateimanager → Downloads). v2.1.0 installiert direkt über v2.0.0/v1.3.x
+              (gleiche Signatur) – alte QFLASH21-Apps (v1.0–v1.2, andere Paket-ID) danach deinstallieren.
             </li>
             <li>
               MagicOS: Bei „Aus unbekannter Quelle installieren?“ den Browser/Dateimanager
@@ -380,11 +381,12 @@ export function SystemCheckPanel() {
               Einstellungen → Sicherheit → Pure Mode deaktivieren.
             </li>
             <li>
-              <strong className="text-foreground">Kein Chrome nötig:</strong> Die App spricht
-              das K+DCAN-Kabel direkt über die Android USB-Host-API an (Kabel per USB-OTG
-              anschließen – beim ersten Mal USB-Berechtigung bestätigen).
+              <strong className="text-foreground">Kein Chrome nötig, kein Internet:</strong> Die
+              App spricht das K+DCAN-Kabel direkt über die Android USB-Host-API an (Kabel per
+              USB-OTG anschließen – beim ersten Mal USB-Berechtigung bestätigen). Flugmodus ist
+              OK – sämtliche Daten (auch DeepOBD-Konfigs) sind im APK enthalten.
             </li>
-            <li>App öffnen → dieser System-Check zeigt „Native-App-Modus“ (grün).</li>
+            <li>App öffnen → dieser System-Check zeigt „Standalone-App“ (grün).</li>
             <li>
               Sollte die App je Fehler zeigen: Der native{' '}
               <strong className="text-foreground">Fehlerbericht</strong> erscheint mit
