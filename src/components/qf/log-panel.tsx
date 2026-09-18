@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { Terminal, Trash2, Copy, ArrowDown } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Terminal, Trash2, Copy, ArrowDown, History, RefreshCw, Database } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useFlasher } from '@/store/flasher';
+import { fetchOperationLogSupabase, type OperationLogEntry } from '@/lib/supabase-log';
 import type { LogDir } from '@/lib/kwp/types';
 import { cn } from '@/lib/utils';
 
@@ -18,10 +19,61 @@ const DIR_STYLE: Record<LogDir, { label: string; cls: string }> = {
   ok: { label: 'OK', cls: 'bg-success/15 text-success' },
 };
 
+/** Holt die Historie: zuerst Server-API, bei Fehlern Supabase-REST direkt. */
+async function fetchHistory(): Promise<{ rows: OperationLogEntry[]; source: 'server' | 'supabase' }> {
+  try {
+    const res = await fetch('/api/logs?limit=25');
+    if (res.ok) {
+      const data = (await res.json()) as { logs: OperationLogEntry[] };
+      return { rows: data.logs, source: 'server' };
+    }
+  } catch {
+    // → Fallback
+  }
+  const rows = await fetchOperationLogSupabase(25);
+  return { rows, source: 'supabase' };
+}
+
 export function LogPanel() {
   const logs = useFlasher((s) => s.logs);
   const clearLogs = useFlasher((s) => s.clearLogs);
   const [filter, setFilter] = useState<'all' | LogDir>('all');
+
+  // ── Operationshistorie (Supabase, Server-API mit REST-Fallback) ──
+  const [history, setHistory] = useState<OperationLogEntry[] | null>(null);
+  const [historySource, setHistorySource] = useState<'server' | 'supabase' | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  const applyHistory = (r: { rows: OperationLogEntry[]; source: 'server' | 'supabase' }) => {
+    setHistory(r.rows);
+    setHistorySource(r.source);
+    setHistoryError(null);
+  };
+
+  const loadHistory = useCallback(() => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    fetchHistory()
+      .then(applyHistory)
+      .catch(() => setHistoryError('Datenbank nicht erreichbar'))
+      .finally(() => setHistoryLoading(false));
+  }, []);
+
+  // Initial laden – asynchron, ohne synchrones setState im Effect (React-Regeln)
+  useEffect(() => {
+    let cancelled = false;
+    fetchHistory()
+      .then((r) => {
+        if (!cancelled) applyHistory(r);
+      })
+      .catch(() => {
+        if (!cancelled) setHistoryError('Datenbank nicht erreichbar');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const visible = filter === 'all' ? logs : logs.filter((l) => l.dir === filter);
 
@@ -108,6 +160,62 @@ export function LogPanel() {
           <Badge variant="outline" className="ml-auto">
             {logs.length} Einträge
           </Badge>
+        </div>
+
+        {/* ── Operationshistorie (dauerhaft in Supabase) ── */}
+        <div className="rounded-lg border p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <History className="h-4 w-4 text-primary" aria-hidden />
+            <p className="text-sm font-semibold">Operationshistorie</p>
+            {historySource && (
+              <Badge variant="outline" className="gap-1">
+                <Database className="h-3 w-3" aria-hidden />
+                {historySource === 'server' ? 'Server-API' : 'Supabase direkt'}
+              </Badge>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto h-7 px-2"
+              onClick={() => void loadHistory()}
+              disabled={historyLoading}
+              aria-label="Operationshistorie neu laden"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', historyLoading && 'animate-spin')} />
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Dauerhaft gespeicherte Aktionen (Verbinden, Ident, Fehlerspeicher, Flash …) aus der Supabase-Datenbank.
+          </p>
+          <div className="mt-2 max-h-56 overflow-y-auto custom-scrollbar">
+            {historyError ? (
+              <p className="py-3 text-center text-xs text-muted-foreground">{historyError}</p>
+            ) : history === null ? (
+              <p className="py-3 text-center text-xs text-muted-foreground">Lade Historie …</p>
+            ) : history.length === 0 ? (
+              <p className="py-3 text-center text-xs text-muted-foreground">
+                Noch keine Operationen gespeichert – nach dem ersten Diagnoselauf erscheinen sie hier.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border/40 text-xs">
+                {history.map((h) => (
+                  <li key={h.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1.5">
+                    <Badge variant={h.status === 'ERROR' ? 'destructive' : 'success'} className="px-1.5 py-0 text-[10px]">
+                      {h.status}
+                    </Badge>
+                    <span className="font-medium">{h.operation}</span>
+                    {h.vehicle && <span className="text-muted-foreground">· {h.vehicle}</span>}
+                    {typeof h.durationMs === 'number' && (
+                      <span className="text-muted-foreground">· {h.durationMs} ms</span>
+                    )}
+                    <span className="ml-auto text-[10px] text-muted-foreground">
+                      {new Date(h.createdAt).toLocaleString('de-DE', { hour12: false })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </CardContent>
       <CardFooter>

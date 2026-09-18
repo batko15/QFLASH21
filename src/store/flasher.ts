@@ -10,6 +10,7 @@ import { create } from 'zustand';
 import { toast } from 'sonner';
 
 import { SerialClient, isWebSerialSupported, isAndroid, portKindFromInfo, DDE4_KEYWORDS } from '@/lib/kwp/serial-client';
+import { reportOperationSupabase } from '@/lib/supabase-log';
 import { MockSerialPort } from '@/lib/kwp/mock';
 import { DDE4, IDENT_SERVICES, LIVE_BLOCKS, liveBlockById, parseDtcResponse } from '@/lib/kwp/dde4';
 import { computeAllChecksums, fixAllChecksums, touchesProtectedArea, FULL_SIZE } from '@/lib/kwp/checksum';
@@ -115,13 +116,25 @@ async function reportOperation(
   durationMs: number
 ): Promise<void> {
   try {
-    await fetch('/api/logs', {
+    const res = await fetch('/api/logs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ operation, status, details, durationMs }),
     });
+    if (res.ok) return;
+    // Server ohne DB-Konfiguration (503) → direkter Supabase-Fallback
   } catch {
-    // Logging darf die Diagnose nicht blockieren
+    // Netzwerkfehler → ebenso Fallback
+  }
+  try {
+    await reportOperationSupabase({
+      operation,
+      status,
+      details: JSON.stringify(details).slice(0, 4000),
+      durationMs,
+    });
+  } catch {
+    // Logging darf die Diagnose niemals blockieren
   }
 }
 
