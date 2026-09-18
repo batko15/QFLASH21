@@ -31,7 +31,7 @@ QFLASH21 kommuniziert mit der Motorsteuerung **DDE4** der BMW-Diesemodelle:
 
 ### 🚨 Fehlerspeicher (DTC)
 - **Normaler Speicher** (Service 0x18 FF00) **und** DDE4-**Schattenspeicher** (0x18 FD00)
-- 30 EDC15-Fehlernummern mit deutschen Beschreibungen
+- **51 EDC15-Fehlernummern** mit deutschen Beschreibungen (inkl. Ladedruckregelung, IMMO, CAN)
 - Status-Byte-Dekodierung (aktuell/sporadisch/pendierend/bestätigt)
 - Löschen beider Speicher (Service 0x14) mit Bestätigung
 - **KI-Werkstattanalyse** (LLM) mit Offline-Fallback-Hinweisen
@@ -40,10 +40,26 @@ QFLASH21 kommuniziert mit der Motorsteuerung **DDE4** der BMW-Diesemodelle:
 ![Fehlerspeicher](docs/screenshots/03-fehlerspeicher.png)
 
 ### 📈 Live-Daten
-- 4 Messwertblöcke (Drehzahl, Kühlmitteltemperatur, Einspritzbeginn, Ladedruck-Soll/Ist, Luftmasse …)
-- 600-ms-Polling mit Grafana-artigen Anzeigen
+- **5 Messwertblöcke** (0x03/0x07/0x13/0x15/0x17): Drehzahl, Temperaturen, Ladedruck, Luftmasse,
+  Einspritzbeginn, AGR/Lader-Position, Öl-/Abgastemperatur (AT1/AT2, EDC15C4-Zusatzsensoren)
+- 600-ms-Polling mit Kreuzzeiger-Gauges + Sparkline-Verläufen
+- **Seiten-Konfigurator** (DeepOBD-Prinzip): Blöcke für Round-Robin-Polling frei wählbar, persistiert
+- **Kompaktansicht** aller Seitenblöcke + Grenzwert-Badges
+- **Aufzeichnung** (bis 1500 Frames) mit **CSV-** (Excel) **und TSV-Export** (DeepOBD/MultiEcoScan-Stil)
 
 ![Live-Daten](docs/screenshots/06-live-daten.png)
+
+### 🔧 Steuergeräte-Jobs (DeepOBD-inspiriert)
+Vom e90-Forum-Thread zu Deep OBD übernommenes Prinzip – freie Jobs mit vollem Funktionsumfang:
+- **ECU-Reset** (0x11): Steuergerät-Neustart inkl. sauberem Session-Abbau + Auto-Reconnect
+- **Routinen** (0x31): Glühkerzen-Funktionstest (je Zylinder), Laufunruhe-/Zylinder-Abschalttest,
+  AGR-Funktionstest, Adaptionswerte zurücksetzen, Test-Leerlauf +250 1/min
+- **Aktuatorik** (0x30): Glühstiftrelais, Lüfter, AGR, Ladedruckregelventil N75, Kraftstoffpumpenrelais
+- **Info-Felder** (0x1A): ZUSB/Teilenummer, AIF/Codierung – wie DeepOBD „ZUSB/AIF anzeigen“
+- Sicherheitsstufen (safe/caution/danger), Bestätigungsdialoge, Job-Historie (12 Einträge)
+- Live-Side-Effects sichtbar: Test-Leerlauf → Drehzahl-Gauge, AGR-Test → Block 0x15
+
+![Jobs](docs/screenshots/08-jobs.png)
 
 ### 💾 Flash & BIN-Verwaltung
 - **Flash lesen**: FULL (512 KiB) und CAL (48 KiB) über Services 0x35/0x36
@@ -62,9 +78,16 @@ QFLASH21 kommuniziert mit der Motorsteuerung **DDE4** der BMW-Diesemodelle:
 
 ### 🧪 Simulator (ohne Fahrzeug testbar!)
 Virtuelles DDE4.0 mit echter 5-Baud-Flankendekodierung, K-Line-Echo, DTCs, Live-Werten
-und 512-KiB-Fake-Flash – **die komplette App ohne Hardware testbar**.
+und 512-KiB-Fake-Flash – **die komplette App inkl. aller Jobs ohne Hardware testbar**.
 
 ![Verbindung](docs/screenshots/02-verbindung.png)
+
+### 🛡️ Stabilität & Komfort
+- **TesterPresent-KeepAlive** (0x3E alle 3 s) mit Session-Verlust-Erkennung
+- **Auto-Reconnect** (max. 3 Versuche, auch nach ECU-Reset)
+- **WakeLock**: Bildschirm bleibt während aktiver Diagnose an (Android) – abschaltbar
+- Einstellungs-Persistenz (Baudrate, Fahrzeug, Live-Seite, Auto-Reconnect, WakeLock)
+- Mobile **Bottom-Navigation** (Android-optimiert, DeepOBD-Seiten-Prinzip)
 
 ---
 
@@ -108,6 +131,10 @@ QFLASH21 läuft **direkt auf Android** – Chrome unterstützt Web Serial nativ 
 |---|---|
 | ![KI-Analyse](docs/screenshots/04-ki-analyse.png) | ![Flash](docs/screenshots/07-flash.png) |
 
+| Jobs (mobil) | Live m. Bottom-Nav (mobil) |
+|---|---|
+| ![Jobs](docs/screenshots/08-jobs.png) | ![Mobil](docs/screenshots/10-mobil-live.png) |
+
 ---
 
 ## 🚀 Deployment (Vercel + Supabase)
@@ -128,19 +155,19 @@ bun run dev                 # http://localhost:3000
 ```
 src/
 ├── app/
-│   ├── page.tsx              # Haupt-App (8 Tabs)
+│   ├── page.tsx              # Haupt-App (9 Tabs + Mobile-Bottom-Nav)
 │   └── api/
 │       ├── logs/             # OperationLog → Supabase (Prisma)
 │       └── analyze-dtc/      # KI-Fehleranalyse (LLM + Offline-Fallback)
-├── components/qf/            # UI (Tabs, Panels, PWA, Install-Button)
+├── components/qf/            # UI (Tabs, Panels, Jobs, PWA, Install-Button)
 ├── lib/kwp/
 │   ├── serial-client.ts      # Web Serial: 5-Baud-Init über BREAK, Echo-Handling
 │   ├── protocol.ts           # ISO 14230 Framing + NRC-Tabelle
-│   ├── dde4.ts               # DDE4-Profil (Services, DTC-Tabelle, Security-Access)
+│   ├── dde4.ts               # DDE4-Profil (Services, 51 DTCs, Jobs, Security-Access)
 │   ├── checksum.ts           # Bosch-CR2-Prüfsummen
 │   ├── bin.ts                # FULL/CAL-Erkennung, Diff, Hex-Dump
-│   └── mock.ts               # Virtuelles DDE4 (Simulator)
-├── store/flasher.ts          # Zustand: Verbindungs-/Flash-Statusmaschine
+│   └── mock.ts               # Virtuelles DDE4 (Simulator, inkl. 0x11/0x30/0x31-Jobs)
+├── store/flasher.ts          # Zustand: Verbindungs-/Flash-/Job-Statusmaschine
 └── public/                   # PWA: Manifest, Icons, Service Worker
 ```
 
@@ -170,4 +197,5 @@ gedacht. Nutzung ausschließlich auf eigene Gefahr.
 ## Credits
 
 - Protokoll-Referenz: [uholeschak/ediabaslib](https://github.com/uholeschak/ediabaslib)
+- Job-/Seiten-Konzept inspiriert von **Deep OBD for BMW** (uholeschak) + [e90-Forum-Thread](https://www.e90-forum.de/forum/thread/58407/)
 - ISO 14230 (KWP2000 on K-Line), Bosch EDC15C4 / DDE4.0

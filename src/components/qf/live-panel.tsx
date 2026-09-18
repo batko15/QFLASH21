@@ -1,11 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Gauge, Play, Square, Circle, Download, Trash2, Activity } from 'lucide-react';
+import { Gauge, Play, Square, Circle, Download, Trash2, Activity, Layers } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import { useFlasher, getLiveBlocksMeta } from '@/store/flasher';
 import type { LiveDataFrame, LiveValue } from '@/lib/kwp/types';
 import { cn } from '@/lib/utils';
@@ -114,15 +115,15 @@ function Sparkline({ values, warn }: { values: number[]; warn: boolean }) {
   );
 }
 
-/* ── CSV-Export ── */
-function buildCsv(frames: LiveDataFrame[]): string {
+/* ── Export: CSV (Excel, Semikolon) & TSV (DeepOBD/MultiEcoScan-Stil, Tab-getrennt) ── */
+function buildExport(frames: LiveDataFrame[], separator: ';' | '\t'): string {
   const labels = frames[0]?.values.map((v) => v.label) ?? [];
   const head = ['zeitstempel', ...labels.map((l) => `${l} [${frames[0]?.values.find((v) => v.label === l)?.unit ?? ''}]`)];
   const rows = frames.map((f) => [
     new Date(f.timestamp).toISOString(),
     ...labels.map((l) => String(f.values.find((v) => v.label === l)?.value ?? '')),
   ]);
-  return [head.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
+  return [head.join(separator), ...rows.map((r) => r.join(separator))].join('\n');
 }
 
 function valueTone(v: LiveValue): string {
@@ -144,6 +145,8 @@ export function LivePanel() {
   const startRecording = useFlasher((s) => s.startRecording);
   const stopRecording = useFlasher((s) => s.stopRecording);
   const clearRecording = useFlasher((s) => s.clearRecording);
+  const livePage = useFlasher((s) => s.livePage);
+  const toggleLiveBlock = useFlasher((s) => s.toggleLiveBlock);
 
   const [blockId, setBlockId] = useState<number>(BLOCKS[0]?.id ?? 3);
 
@@ -151,13 +154,25 @@ export function LivePanel() {
   const history = liveHistory[blockId] ?? [];
   const lastTs = frame ? new Date(frame.timestamp).toLocaleTimeString('de-DE') : null;
 
-  function downloadCsv() {
+  /** Kompaktansicht: neuester Frame jedes Blocks der aktiven Seite */
+  const pageFrames = useMemo(
+    () =>
+      BLOCKS.filter((b) => livePage.includes(b.id))
+        .map((b) => ({ block: b, frame: liveFrames[b.id] }))
+        .filter((x) => x.frame != null),
+    [livePage, liveFrames]
+  );
+  const cycleMs = Math.max(1, livePage.length) * 600;
+
+  function downloadExport(separator: ';' | '\t') {
     if (recordedFrames.length === 0) return;
-    const blob = new Blob([buildCsv(recordedFrames)], { type: 'text/csv;charset=utf-8' });
+    const ext = separator === '\t' ? 'tsv' : 'csv';
+    const mime = separator === '\t' ? 'text/tab-separated-values;charset=utf-8' : 'text/csv;charset=utf-8';
+    const blob = new Blob([buildExport(recordedFrames, separator)], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `qflash21-live-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+    a.download = `qflash21-live-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${ext}`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -181,7 +196,7 @@ export function LivePanel() {
                 <Square /> Stop
               </Button>
             ) : (
-              <Button size="sm" onClick={() => startLivePoll(blockId)} disabled={!connected || busy}>
+              <Button size="sm" onClick={() => startLivePoll()} disabled={!connected || busy}>
                 <Play /> Start
               </Button>
             )}
@@ -204,10 +219,7 @@ export function LivePanel() {
                 type="button"
                 role="tab"
                 aria-selected={blockId === b.id}
-                onClick={() => {
-                  setBlockId(b.id);
-                  if (livePolling) startLivePoll(b.id);
-                }}
+                onClick={() => setBlockId(b.id)}
                 className={cn(
                   'rounded-lg border px-3 py-1.5 text-sm transition-colors',
                   blockId === b.id
@@ -220,10 +232,79 @@ export function LivePanel() {
             ))}
           </div>
 
+          {/* Seiten-Konfigurator (DeepOBD-Pages-Prinzip): Round-Robin über aktivierte Blöcke */}
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <div className="flex items-center gap-2">
+              <Layers className="h-4 w-4 text-primary" aria-hidden />
+              <p className="text-sm font-medium">Seiten-Konfigurator</p>
+              <Badge variant="outline" className="ml-auto">
+                Zyklus {(cycleMs / 1000).toFixed(1)} s · {livePage.length} Block{livePage.length === 1 ? '' : 'e'}
+              </Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Aktivierte Blöcke werden beim Polling im Wechsel abgefragt (DeepOBD-Seiten-Prinzip) und
+              in die Aufzeichnung übernommen. Einstellung wird gespeichert.
+            </p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              {BLOCKS.map((b) => (
+                <label
+                  key={b.id}
+                  className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-xs"
+                >
+                  <Switch
+                    checked={livePage.includes(b.id)}
+                    onCheckedChange={() => toggleLiveBlock(b.id)}
+                    aria-label={`Block 0x${b.id.toString(16).toUpperCase()} ${livePage.includes(b.id) ? 'deaktivieren' : 'aktivieren'}`}
+                  />
+                  <span className="min-w-0 truncate">
+                    <span className="font-mono font-semibold">0x{b.id.toString(16).toUpperCase().padStart(2, '0')}</span>{' '}
+                    {b.name.split(':')[0]}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <p className="text-xs text-muted-foreground">
             {BLOCKS.find((b) => b.id === blockId)?.name}
             {lastTs && <> · letzte Aktualisierung {lastTs}</>}
           </p>
+
+          {/* Kompaktansicht: alle Blöcke der aktiven Seite */}
+          {pageFrames.length > 1 && (
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {pageFrames.map(({ block, frame: f }) => (
+                <div
+                  key={block.id}
+                  className={cn(
+                    'rounded-xl border p-3 transition-colors',
+                    blockId === block.id && livePolling ? 'border-primary/60 bg-primary/5' : 'bg-card'
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-xs font-semibold">
+                      <span className="font-mono text-primary">0x{block.id.toString(16).toUpperCase()}</span>{' '}
+                      {block.name.split(':')[0]}
+                    </p>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {new Date(f.timestamp).toLocaleTimeString('de-DE')}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+                    {f.values.map((v) => (
+                      <div key={v.label} className="flex items-baseline justify-between gap-1">
+                        <span className="truncate text-[11px] text-muted-foreground">{v.label}</span>
+                        <span className="font-mono text-xs font-semibold tabular-nums">
+                          {v.value.toFixed(v.decimals)}
+                          <span className="ml-0.5 text-[9px] font-normal text-muted-foreground">{v.unit}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {frame ? (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -282,10 +363,13 @@ export function LivePanel() {
               Aufzeichnung: {recordedFrames.length} Frame{recordedFrames.length === 1 ? '' : 's'}
               {recordedFrames.length >= 1500 && ' (Limit)'}
             </p>
-            <span className="text-xs text-muted-foreground">· CSV mit Semikolon-Trennung (Excel-kompatibel)</span>
+            <span className="text-xs text-muted-foreground">· CSV (Semikolon) oder TSV (Tab, DeepOBD/MultiEcoScan-Stil)</span>
             <div className="ml-auto flex gap-2">
-              <Button size="sm" variant="outline" onClick={downloadCsv} disabled={recordedFrames.length === 0}>
-                <Download /> CSV exportieren
+              <Button size="sm" variant="outline" onClick={() => downloadExport(';')} disabled={recordedFrames.length === 0}>
+                <Download /> CSV
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => downloadExport('\t')} disabled={recordedFrames.length === 0}>
+                <Download /> TSV
               </Button>
               <Button size="sm" variant="ghost" onClick={clearRecording} disabled={recordedFrames.length === 0 || recording}>
                 <Trash2 /> Leeren

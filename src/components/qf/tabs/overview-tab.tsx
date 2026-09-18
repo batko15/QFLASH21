@@ -1,6 +1,6 @@
 'use client';
 
-import { FlaskConical, Fingerprint, ScanSearch, Gauge, Cable, Cpu, TriangleAlert, CircleCheck } from 'lucide-react';
+import { FlaskConical, Fingerprint, ScanSearch, Gauge, Cable, Cpu, TriangleAlert, CircleCheck, Wrench } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -117,6 +117,9 @@ export function OverviewTab({ onGoTab }: { onGoTab: (tab: string) => void }) {
           </Button>
           <Button onClick={() => onGoTab('live')} variant="outline" disabled={!connected}>
             <Gauge /> Live-Daten
+          </Button>
+          <Button onClick={() => onGoTab('jobs')} variant="outline" disabled={!connected}>
+            <Wrench /> Steuergeräte-Jobs
           </Button>
           <Button onClick={() => onGoTab('flash')} variant="outline" disabled={!connected}>
             <TriangleAlert /> Lesen / Schreiben

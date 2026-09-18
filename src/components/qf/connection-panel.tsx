@@ -44,6 +44,9 @@ export function ConnectionPanel() {
   const disconnect = useFlasher((s) => s.disconnect);
   const setBaudRate = useFlasher((s) => s.setBaudRate);
   const autoReconnect = useFlasher((s) => s.autoReconnect);
+  const wakeLockEnabled = useFlasher((s) => s.wakeLockEnabled);
+  const wakeLockActive = useFlasher((s) => s.wakeLockActive);
+  const setWakeLockEnabled = useFlasher((s) => s.setWakeLockEnabled);
   const setAutoReconnect = useFlasher((s) => s.setAutoReconnect);
   const initSupport = useFlasher((s) => s.initSupport);
   const readIdent = useFlasher((s) => s.readIdent);
@@ -267,6 +270,23 @@ export function ConnectionPanel() {
                 checked={autoReconnect}
                 onCheckedChange={setAutoReconnect}
                 aria-label="KeepAlive und automatische Wiederverbindung umschalten"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-2.5">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 font-medium">
+                  Bildschirm wachhalten
+                  {wakeLockActive && <Badge variant="success" className="px-1.5 py-0 text-[10px]">AKTIV</Badge>}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  WakeLock verhindert das Abschalten des Displays während aktiver Diagnose
+                  (wie bei DeepOBD).
+                </p>
+              </div>
+              <Switch
+                checked={wakeLockEnabled}
+                onCheckedChange={setWakeLockEnabled}
+                aria-label="Bildschirm wachhalten umschalten"
               />
             </div>
           </CardContent>

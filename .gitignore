@@ -53,3 +53,4 @@ apk-src/classes/
 apk-src/dexout/
 apk-src/*.keystore
 apk/out/
+tool-results/

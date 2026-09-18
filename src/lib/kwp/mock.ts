@@ -52,6 +52,15 @@ export class MockSerialPort implements QfSerialPort {
   private shadowDtcs: MockDtc[] = INITIAL_SHADOW_DTCS.map((d) => ({ ...d }));
   private bootTime = Date.now();
 
+  // Job-Side-Effects (Aktuatorik-Tests, Leerlaufanhebung)
+  private sessionDown = false;
+  private idleBoostUntil = 0;
+  private egrOverrideUntil = 0;
+  private egrOverrideValue = 0;
+  private n75OverrideUntil = 0;
+  private n75OverrideValue = 0;
+  private glowUntil = 0;
+
   // Flash-Transfer
   private uploadPending: { addr: number; size: number; sent: number; seq: number } | null = null;
   private downloadPending: { addr: number; size: number; buf: Uint8Array; received: number; seq: number } | null = null;
@@ -201,11 +210,46 @@ export class MockSerialPort implements QfSerialPort {
   }
 
   private async dispatch(service: number, data: number[]): Promise<void> {
+    // Nach ECU-Reset (0x11) ist die Diagnose-Session weg – keine Antworten mehr,
+    // nur ein neuer 5-Baud-Init baut sie wieder auf (wie beim echten DDE4).
+    if (this.sessionDown) return;
     switch (service) {
       case 0x10: // StartDiagnosticSession
         await sleep(25);
         this.respond(0x50, [0x84]);
         return;
+
+      case 0x11: { // ECUReset – Session danach weg
+        await sleep(90);
+        this.respond(0x51, [data[0] ?? 0x00]);
+        void sleep(150).then(() => {
+          this.sessionDown = true;
+          this.initDone = false;
+          this.expectComplement = false;
+          this.breakFlanks = [];
+          this.securityUnlocked = false;
+        });
+        return;
+      }
+
+      case 0x30: { // InputOutputControlByLocalIdentifier (Aktuatorik-Tests)
+        const localId = data[0] ?? 0;
+        const value = data[1] ?? 0;
+        await sleep(45);
+        const now = Date.now();
+        if (localId === 0x01 && value) this.glowUntil = now + 5000;
+        if (localId === 0x03) {
+          this.egrOverrideValue = value;
+          this.egrOverrideUntil = now + (value ? 3000 : 0);
+        }
+        if (localId === 0x04) {
+          this.n75OverrideValue = value;
+          this.n75OverrideUntil = now + (value ? 3000 : 0);
+        }
+        // Positive Response 0x70 (SID 0x30 + 0x40): localId + aktueller Kontrollstatus
+        this.respond(0x70, [localId, value]);
+        return;
+      }
 
       case 0x1a: { // ReadECUIdentification
         const id = data[0];
@@ -281,6 +325,29 @@ export class MockSerialPort implements QfSerialPort {
           const results = computeAllChecksums(this.flash);
           const ok = results.every((r) => r.ok);
           this.respond(0x71, [data[0], 0xff, 0x01, ok ? 0x00 : 0x01]);
+        } else if (routine === 0xe101) {
+          // Glühkerzen-Funktionstest: Widerstandswerte je Zylinder (0,12 Ω → Raw 12)
+          await sleep(320);
+          this.respond(0x71, [data[0], 0xe1, 0x01, 0x00, 0x0c, 0x0d, 0x0c, 0x0e, 0x0c, 0x0d]);
+        } else if (routine === 0xe102) {
+          // Laufunruhe/Glättung je Zylinder (128 = neutral)
+          await sleep(260);
+          this.respond(0x71, [data[0], 0xe1, 0x02, 0x00, 0x80, 0x82, 0x7f, 0x81]);
+        } else if (routine === 0xe103) {
+          // AGR-Funktionstest – Ventil bewegt sich (im Live-Block 0x15 sichtbar)
+          await sleep(240);
+          this.egrOverrideValue = 0x66; // 40 %
+          this.egrOverrideUntil = Date.now() + 3000;
+          this.respond(0x71, [data[0], 0xe1, 0x03, 0x00]);
+        } else if (routine === 0xe104) {
+          // Adaptionswerte zurücksetzen
+          await sleep(200);
+          this.respond(0x71, [data[0], 0xe1, 0x04, 0x00]);
+        } else if (routine === 0xe105) {
+          // Test-Leerlauf +250 1/min für 20 s (im Live-Block 0x03 sichtbar)
+          await sleep(160);
+          this.idleBoostUntil = Date.now() + 20000;
+          this.respond(0x71, [data[0], 0xe1, 0x05, 0x00, 0x00, 0xfa]);
         } else {
           this.respondError(0x31, 0x12);
         }
@@ -403,7 +470,8 @@ export class MockSerialPort implements QfSerialPort {
 
   private liveValues(id: number): number[] | null {
     const t = (Date.now() - this.bootTime) / 1000;
-    const rpm = Math.round((780 + Math.sin(t / 2.3) * 18 + Math.sin(t * 2.1) * 6) * 4);
+    let rpm = Math.round((780 + Math.sin(t / 2.3) * 18 + Math.sin(t * 2.1) * 6) * 4);
+    if (Date.now() < this.idleBoostUntil) rpm += 250 * 4; // Test-Leerlauf +250 1/min
     switch (id) {
       case 0x03: {
         // Ladedruck IST: ~1050 mbar absolut im Leerlauf, leicht schwankend (1 LSB = 1 mbar)
@@ -431,13 +499,25 @@ export class MockSerialPort implements QfSerialPort {
           (Math.floor(t / 60) >> 8) & 0xff,
           Math.floor(t / 60) & 0xff,
         ];
-      case 0x15:
+      case 0x15: {
+        const now = Date.now();
+        const egr = now < this.egrOverrideUntil ? this.egrOverrideValue : Math.round(4 * 2.55);
+        const n75 = now < this.n75OverrideUntil ? this.n75OverrideValue : Math.round(31 * 2.55);
+        const glowRest = now < this.glowUntil ? 5 : 0;
         return [
           0, // Pedal
-          Math.round(4 * 2.55), // AGR
-          Math.round(31 * 2.55), // Lader
-          0,
+          egr,
+          n75,
+          glowRest,
         ];
+      }
+      case 0x17: {
+        // Öltemperatur, Abgastemperatur AT1/AT2, Ölstand (EDC15C4-Zusatzsensoren)
+        const oil = Math.round(Math.min(102, 84 + t / 30) + 48);
+        const at1 = Math.round((42 + Math.sin(t / 5) * 3 + 40) * 10);
+        const at2 = Math.round((38 + Math.sin(t / 6) * 2 + 40) * 10);
+        return [oil, (at1 >> 8) & 0xff, at1 & 0xff, (at2 >> 8) & 0xff, at2 & 0xff, Math.round(92 * 2.55)];
+      }
       default:
         return null;
     }

@@ -64,12 +64,27 @@ export const DTC_TABLE: Record<number, string> = {
   1123: 'Tempomat-Schalter – Störung',
   1239: 'Relais Kleinlast – Steuerung fehlerhaft',
   1682: 'Innenraumtemperatursensor – Kurzschluss',
+  1096: 'Einspritzventil Zylinder 5 – elektrischer Fehler',
   17949: 'Ventil Kraftstoffdruckregelung – Kurzschluss nach Masse',
   17964: 'Ladedruckregelung – Regelgrenze unterschritten',
   17965: 'Ladedruckregelung – Überschussdruck',
   17966: 'Ladedruckregelventil (N75) – elektrischer Fehler',
   17967: 'Ladedrucksensor – Signal unplausibel',
   19560: 'Magnetventil 1 Einspritzbeginn – Kurzschluss nach Plus',
+  // Erweitert (EDC15-Bosch-Nummerierung, dokumentiert in VAG/BMW-Diagnose-Listen):
+  17955: 'Drosselklappen-Positionssensor – Signal unplausibel',
+  17957: 'Ladedruckregelventil (N75) – Unterbrechung',
+  17958: 'Ladedruckregelventil (N75) – Kurzschluss nach Plus',
+  17961: 'Ladedruckregelung – Regelabweichung zu hoch',
+  17962: 'Ladedruckregelung – Regelabweichung zu niedrig',
+  17963: 'Ladedruckregelung – Überschussdruck erkannt',
+  17968: 'Leerlaufdrehzahlregelung – Regelgrenze erreicht',
+  17969: 'Drosselklappen-Adaptation – Grenzwert erreicht',
+  17971: 'Magnetventil Einspritzbeginn – Kurzschluss nach Masse',
+  17978: 'Motorsteuergerät gesperrt – Wegfahrsperre (IMMO) aktiv',
+  18008: 'Bordnetzspannung – Klemme 30 Spannung zu niedrig',
+  18034: 'CAN – fehlende Nachricht vom Getriebesteuergerät',
+  19561: 'Magnetventil 2 Einspritzbeginn – Kurzschluss nach Plus',
 };
 
 /** Status-Bits gemäß KWP2000 (ISO 15031-6-kompatibel) */
@@ -163,6 +178,17 @@ export const LIVE_BLOCKS: LiveBlock[] = [
       { label: 'Glühzeitrestwert', value: d[3], unit: 's', decimals: 0 },
     ],
   },
+  {
+    // EDC15C4/DDE4-Zusatzsensoren (dokumentiert: OTF/KTF/AT1/AT2, ECUConnections-Guide)
+    id: 0x17,
+    name: 'Öl & Abgastemperatur',
+    parse: (d) => [
+      { label: 'Öltemperatur', value: d[0] - 48, unit: '°C', decimals: 0 },
+      { label: 'Abgastemperatur AT1', value: ((d[1] << 8) | d[2]) / 10 - 40, unit: '°C', decimals: 1 },
+      { label: 'Abgastemperatur AT2', value: ((d[3] << 8) | d[4]) / 10 - 40, unit: '°C', decimals: 1 },
+      { label: 'Ölstand', value: d[5] / 2.55, unit: '%', decimals: 1 },
+    ],
+  },
 ];
 
 export function liveBlockById(id: number): LiveBlock | undefined {
@@ -185,7 +211,184 @@ export const ROUTINES = {
   eraseFlash: 0xff00,
   verifyChecksum: 0xff01,
   eraseDtcMemory: 0xff14,
+  glowTest: 0xe101,
+  cylinderBalance: 0xe102,
+  egrTest: 0xe103,
+  adaptReset: 0xe104,
+  idleIncrease: 0xe105,
 } as const;
+
+/* ── Steuergeräte-Jobs (DeepOBD-inspiriert: SG-Reset, Aktuatorik, Routinen, AIF/ZUSB) ── */
+
+export type JobKind = 'reset' | 'output' | 'routine' | 'read';
+
+export interface EcuJob {
+  id: string;
+  name: string;
+  desc: string;
+  kind: JobKind;
+  danger: 'safe' | 'caution' | 'danger';
+  service: number;
+  params: number[];
+  note: string;
+  /** Erwartete Ausführungsdauer (ms) */
+  duration?: number;
+}
+
+/** Lokale Ausgangs-IDs für Service 0x30 (InputOutputControlByLocalIdentifier) */
+export const OUTPUT_LABELS: Record<number, string> = {
+  0x01: 'Glühstiftrelais',
+  0x02: 'Lüfter 1. Stufe',
+  0x03: 'AGR-Ventil',
+  0x04: 'Ladedruckregelventil N75',
+  0x05: 'Kraftstoffpumpenrelais',
+};
+
+export const JOBS: EcuJob[] = [
+  {
+    id: 'reset-ecu',
+    name: 'Steuergerät-Reset (ECU-Reset 0x11)',
+    desc: 'Startet das DDE4.0 neu. Diagnose-Session wird danach abgebaut.',
+    kind: 'reset',
+    danger: 'danger',
+    service: 0x11,
+    params: [0x00],
+    note: 'Motor MUSS aus sein. Nach dem Reset verbindet QFLASH21 automatisch neu.',
+    duration: 2500,
+  },
+  {
+    id: 'routine-glow',
+    name: 'Glühkerzen-Funktionstest',
+    desc: 'Routine prüft Stromaufnahme/Widerstand aller 6 Glühkerzen.',
+    kind: 'routine',
+    danger: 'safe',
+    service: 0x31,
+    params: [0x01, 0xe1, 0x01],
+    note: 'Zündung an, Motor aus. Ergebnis je Zylinder in der Antwort.',
+    duration: 1800,
+  },
+  {
+    id: 'routine-cyl',
+    name: 'Laufunruhe-/Zylinder-Abschalttest',
+    desc: 'Glättungswerte je Zylinder (Laufunruhe-Erkennung) als Testantwort.',
+    kind: 'routine',
+    danger: 'caution',
+    service: 0x31,
+    params: [0x01, 0xe1, 0x02],
+    note: 'Motor im Leerlauf laufen lassen, Fahrzeug fest bremsen (P/N).',
+    duration: 1500,
+  },
+  {
+    id: 'routine-egr',
+    name: 'AGR-Funktionstest',
+    desc: 'Bewegt das AGR-Ventil in Teststellung (hörbar/kennbar).',
+    kind: 'routine',
+    danger: 'caution',
+    service: 0x31,
+    params: [0x01, 0xe1, 0x03],
+    note: 'Zündung an, Motor aus. AGR-Position danach im Live-Block 0x15 sichtbar.',
+    duration: 1400,
+  },
+  {
+    id: 'routine-adapt',
+    name: 'Adaptionswerte zurücksetzen',
+    desc: 'Löscht Adaptionswerte für AGR, LMM und Einspritzbeginn.',
+    kind: 'routine',
+    danger: 'caution',
+    service: 0x31,
+    params: [0x01, 0xe1, 0x04],
+    note: 'Danach Adaptivfahrt (variierte Last/Drehzahl) erforderlich.',
+    duration: 1300,
+  },
+  {
+    id: 'routine-idle',
+    name: 'Test-Leerlauf +250 1/min',
+    desc: 'Hebt die Leerlaufdrehzahl für ~20 s an (Diagnose-Hilfsfunktion).',
+    kind: 'routine',
+    danger: 'caution',
+    service: 0x31,
+    params: [0x01, 0xe1, 0x05],
+    note: 'Motor im Leerlauf, Gangneutral. Im Live-Block 0x03 sichtbar.',
+    duration: 1200,
+  },
+  {
+    id: 'output-glow',
+    name: 'Glühstiftrelais ansteuern',
+    desc: 'Aktiviert das Glühstiftrelais für ~5 s (Ausgangstest 0x30).',
+    kind: 'output',
+    danger: 'caution',
+    service: 0x30,
+    params: [0x01, 0x01],
+    note: 'Zündung an. Nicht bei geladener Batterie mit offenen Glühkerzen testen.',
+    duration: 1100,
+  },
+  {
+    id: 'output-fan',
+    name: 'Lüfter 1. Stufe ansteuern',
+    desc: 'Aktiviert den Lüfter (1. Stufe) für ~5 s.',
+    kind: 'output',
+    danger: 'caution',
+    service: 0x30,
+    params: [0x02, 0x01],
+    note: 'Verletzungsgefahr durch Lüfterflügel – Hände fernhalten.',
+    duration: 1100,
+  },
+  {
+    id: 'output-egr',
+    name: 'AGR-Ventil Teststellung',
+    desc: 'Steuert das AGR-Ventil direkt auf 50 % an.',
+    kind: 'output',
+    danger: 'caution',
+    service: 0x30,
+    params: [0x03, 0x80],
+    note: 'Motor aus, Zündung an. Stellung läuft nach ~3 s zurück.',
+    duration: 1100,
+  },
+  {
+    id: 'output-n75',
+    name: 'Ladedruckregelventil N75 Teststellung',
+    desc: 'Steuert N75 direkt auf 50 % Task an.',
+    kind: 'output',
+    danger: 'caution',
+    service: 0x30,
+    params: [0x04, 0x80],
+    note: 'Motor aus. Ladersteller hörbar bewegen.',
+    duration: 1100,
+  },
+  {
+    id: 'output-pump',
+    name: 'Kraftstoffpumpenrelais ansteuern',
+    desc: 'Aktiviert die Kraftstoffpumpenvorstufe für ~5 s.',
+    kind: 'output',
+    danger: 'caution',
+    service: 0x30,
+    params: [0x05, 0x01],
+    note: 'Pumpengeräusch im Leerlaufbereich hörbar.',
+    duration: 1100,
+  },
+  {
+    id: 'read-zusb',
+    name: 'ZUSB/Teilenummer anzeigen',
+    desc: 'Liest Steuergerät- und Hardware-Teilenummer (DeepOBD: „ZUSB anzeigen“).',
+    kind: 'read',
+    danger: 'safe',
+    service: 0x1a,
+    params: [0x9b],
+    note: 'Nützlich für Ersatzteilbestellung.',
+    duration: 800,
+  },
+  {
+    id: 'read-aif',
+    name: 'AIF/Codierung anzeigen',
+    desc: 'Liest Codierung, Werkstattcode und Import-Kennung (DeepOBD: „AIF anzeigen“).',
+    kind: 'read',
+    danger: 'safe',
+    service: 0x1a,
+    params: [0x9a],
+    note: 'Zeigt das Anwender-Info-Feld des Steuergeräts.',
+    duration: 800,
+  },
+];
 
 export async function eraseRoutineDelay(): Promise<void> {
   // Echte ECUs brauchen hier Sekunden – dem Client über timeoutMs mitteilen

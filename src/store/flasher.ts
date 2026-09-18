@@ -12,7 +12,8 @@ import { toast } from 'sonner';
 import { SerialClient, isWebSerialSupported, isAndroid, portKindFromInfo, DDE4_KEYWORDS } from '@/lib/kwp/serial-client';
 import { reportOperationSupabase } from '@/lib/supabase-log';
 import { MockSerialPort } from '@/lib/kwp/mock';
-import { DDE4, IDENT_SERVICES, LIVE_BLOCKS, liveBlockById, parseDtcResponse } from '@/lib/kwp/dde4';
+import { DDE4, IDENT_SERVICES, LIVE_BLOCKS, liveBlockById, parseDtcResponse, OUTPUT_LABELS } from '@/lib/kwp/dde4';
+import type { EcuJob } from '@/lib/kwp/dde4';
 import { computeAllChecksums, fixAllChecksums, touchesProtectedArea, FULL_SIZE } from '@/lib/kwp/checksum';
 import { analyzeBin, detectBinKind } from '@/lib/kwp/bin';
 import { KwpError } from '@/lib/kwp/types';
@@ -44,6 +45,16 @@ export interface BinState {
   checksumsBad: number;
 }
 
+/** Ergebnis eines ausgeführten Steuergeräte-Jobs */
+export interface JobResult {
+  jobId: string;
+  name: string;
+  ok: boolean;
+  text: string;
+  hex?: string;
+  at: number;
+}
+
 interface FlasherState {
   // Verbindung
   supported: boolean;
@@ -70,9 +81,19 @@ interface FlasherState {
   liveHistory: Record<number, LiveDataFrame[]>;
   recording: boolean;
   recordedFrames: LiveDataFrame[];
+  /** Aktive Live-Seite: Blöcke, die im Round-Robin abgefragt werden (DeepOBD-Prinzip) */
+  livePage: number[];
+
+  // Jobs
+  jobRunning: string | null;
+  jobResult: JobResult | null;
+  jobHistory: JobResult[];
 
   // Einstellungen
   autoReconnect: boolean;
+  /** Bildschirm-Wachhalten (WakeLock API) während aktiver Verbindung */
+  wakeLockEnabled: boolean;
+  wakeLockActive: boolean;
 
   // BIN & Flash
   bin: BinState | null;
@@ -98,13 +119,20 @@ interface FlasherState {
   readDtc: () => Promise<void>;
   clearDtc: () => Promise<void>;
   pollLiveOnce: (blockId: number) => Promise<void>;
-  startLivePoll: (blockId: number) => void;
+  startLivePoll: () => void;
   stopLivePoll: () => void;
+  /** Intern: fragt den nächsten Block der aktiven Live-Seite ab */
+  pollRound: () => Promise<void>;
   startRecording: () => void;
   stopRecording: () => void;
   clearRecording: () => void;
   setAutoReconnect: (v: boolean) => void;
   reconnect: () => Promise<void>;
+
+  // Live-Seiten-Konfigurator
+  toggleLiveBlock: (blockId: number) => void;
+  runJob: (job: EcuJob) => Promise<void>;
+  setWakeLockEnabled: (v: boolean) => void;
 
   loadBinFile: (file: File) => Promise<void>;
   readEcuFlash: () => Promise<void>;
@@ -117,10 +145,12 @@ interface FlasherState {
 
 let client: SerialClient | null = null;
 let liveTimer: ReturnType<typeof setInterval> | null = null;
+let liveRoundIdx = 0;
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let keepAliveFailures = 0;
 let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let visibilityHooked = false;
 let lastPort: Awaited<ReturnType<typeof SerialClient.requestPort>> | null = null;
 let lastPortLabel = '–';
 let logCounter = 0;
@@ -136,6 +166,8 @@ interface StoredSettings {
   baudRate?: number;
   vehicle?: string;
   autoReconnect?: boolean;
+  livePage?: number[];
+  wakeLockEnabled?: boolean;
 }
 
 function loadSettings(): StoredSettings {
@@ -159,6 +191,44 @@ function stopKeepAlive(): void {
   if (keepAliveTimer) clearInterval(keepAliveTimer);
   keepAliveTimer = null;
   keepAliveFailures = 0;
+}
+
+/* ── WakeLock: Bildschirm wachhalten während aktiver Diagnose (DeepOBD-Prinzip) ── */
+interface WakeLockSentinelLike {
+  release: () => Promise<void>;
+  addEventListener: (type: string, cb: () => void) => void;
+}
+let wakeSentinel: WakeLockSentinelLike | null = null;
+let wakeDesired = false;
+
+function syncWakeLock(set: (p: Partial<FlasherState>) => void): void {
+  void (async () => {
+    const nav = navigator as unknown as { wakeLock?: { request(type: 'screen'): Promise<WakeLockSentinelLike> } };
+    if (!nav.wakeLock) return;
+    try {
+      if (wakeDesired && document.visibilityState === 'visible' && !wakeSentinel) {
+        wakeSentinel = await nav.wakeLock.request('screen');
+        wakeSentinel.addEventListener('release', () => {
+          wakeSentinel = null;
+          set({ wakeLockActive: false });
+          // Nach Tab-Wechsel neu anfordern
+          if (wakeDesired) setTimeout(() => syncWakeLock(set), 300);
+        });
+        set({ wakeLockActive: true });
+      } else if (!wakeDesired && wakeSentinel) {
+        await wakeSentinel.release();
+        wakeSentinel = null;
+        set({ wakeLockActive: false });
+      }
+    } catch {
+      set({ wakeLockActive: false });
+    }
+  })();
+}
+
+function releaseWakeLock(set: (p: Partial<FlasherState>) => void): void {
+  wakeDesired = false;
+  syncWakeLock(set);
 }
 
 /**
@@ -256,8 +326,15 @@ export const useFlasher = create<FlasherState>((set, get) => ({
   liveHistory: {},
   recording: false,
   recordedFrames: [],
+  livePage: LIVE_BLOCKS.map((b) => b.id),
+
+  jobRunning: null,
+  jobResult: null,
+  jobHistory: [],
 
   autoReconnect: true,
+  wakeLockEnabled: true,
+  wakeLockActive: false,
 
   bin: null,
   ecuBin: null,
@@ -269,13 +346,24 @@ export const useFlasher = create<FlasherState>((set, get) => ({
 
   initSupport: () => {
     const stored = loadSettings();
+    const validPage =
+      Array.isArray(stored.livePage) && stored.livePage.length > 0
+        ? stored.livePage.filter((id) => LIVE_BLOCKS.some((b) => b.id === id))
+        : [];
     set({
       supported: isWebSerialSupported(),
       android: isAndroid(),
       ...(stored.baudRate ? { baudRate: stored.baudRate } : {}),
       ...(stored.vehicle ? { vehicle: stored.vehicle } : {}),
       ...(typeof stored.autoReconnect === 'boolean' ? { autoReconnect: stored.autoReconnect } : {}),
+      ...(validPage.length > 0 ? { livePage: validPage } : {}),
+      ...(typeof stored.wakeLockEnabled === 'boolean' ? { wakeLockEnabled: stored.wakeLockEnabled } : {}),
     });
+    // WakeLock nach Tab-Wechsel wieder aufnehmen (einmalige Registrierung)
+    if (!visibilityHooked && typeof document !== 'undefined') {
+      visibilityHooked = true;
+      document.addEventListener('visibilitychange', () => syncWakeLock(useFlasher.setState));
+    }
   },
 
   setVehicle: (v) => {
@@ -314,6 +402,10 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       await client.sendRequest(0x10, Array.from(DDE4.startSessionParams), { timeoutMs: 2000 });
       steps.push('Diagnose-Session gestartet (0x10/0x84 bestätigt)');
       set({ connection: 'connected', initSteps: [...steps] });
+      if (get().wakeLockEnabled) {
+        wakeDesired = true;
+        syncWakeLock(useFlasher.setState);
+      }
       get().log('ok', 'Mock-Verbindung hergestellt (virtuelles DDE4.0)');
       toast.success('Simulator verbunden', { description: 'Virtuelles DDE4.0 (EDC15C4) bereit.' });
       void reportOperation('CONNECT', 'OK', { mock: true, keywords: kw }, 0);
@@ -373,6 +465,10 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       set({ connection: 'connected', initSteps: [...steps] });
       lastPortLabel = info.label;
       startKeepAlive(get, set);
+      if (get().wakeLockEnabled) {
+        wakeDesired = true;
+        syncWakeLock(useFlasher.setState);
+      }
       get().log('ok', `Verbindung hergestellt: ${info.label} · TesterPresent-KeepAlive aktiv`);
       toast.success('Steuergerät verbunden', { description: info.label });
       void reportOperation('CONNECT', 'OK', { port: info, baudRate: get().baudRate, keywords: kw }, Date.now() - t0);
@@ -390,6 +486,7 @@ export const useFlasher = create<FlasherState>((set, get) => ({
   disconnect: async () => {
     get().stopLivePoll();
     stopKeepAlive();
+    releaseWakeLock(useFlasher.setState);
     lastPort = null;
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
@@ -520,13 +617,14 @@ export const useFlasher = create<FlasherState>((set, get) => ({
     }
   },
 
-  startLivePoll: (blockId) => {
+  startLivePoll: () => {
     if (liveTimer) clearInterval(liveTimer);
     set({ livePolling: true });
-    void get().pollLiveOnce(blockId);
+    liveRoundIdx = 0;
+    void get().pollRound();
     liveTimer = setInterval(() => {
       if (get().busy) return;
-      void get().pollLiveOnce(blockId);
+      void get().pollRound();
     }, 600);
   },
 
@@ -536,6 +634,14 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       liveTimer = null;
     }
     set({ livePolling: false });
+  },
+
+  /** Round-Robin über die aktive Live-Seite (ein Block pro Tick, DeepOBD-Seiten-Prinzip) */
+  pollRound: async () => {
+    const page = get().livePage.length > 0 ? get().livePage : [LIVE_BLOCKS[0]?.id ?? 0x03];
+    const id = page[liveRoundIdx % page.length];
+    liveRoundIdx++;
+    await get().pollLiveOnce(id);
   },
 
   startRecording: () => {
@@ -553,6 +659,142 @@ export const useFlasher = create<FlasherState>((set, get) => ({
   setAutoReconnect: (v) => {
     set({ autoReconnect: v });
     saveSettings({ autoReconnect: v });
+  },
+
+  toggleLiveBlock: (blockId) => {
+    const page = get().livePage;
+    if (page.includes(blockId)) {
+      if (page.length <= 1) {
+        toast.warning('Mindestens ein Block muss aktiv bleiben');
+        return;
+      }
+      const next = page.filter((id) => id !== blockId);
+      set({ livePage: next });
+      saveSettings({ livePage: next });
+    } else {
+      // Reihenfolge an LIVE_BLOCKS orientieren für stabile Polling-Folge
+      const next = LIVE_BLOCKS.map((b) => b.id).filter((id) => id === blockId || page.includes(id));
+      set({ livePage: next });
+      saveSettings({ livePage: next });
+    }
+  },
+
+  setWakeLockEnabled: (v) => {
+    set({ wakeLockEnabled: v });
+    saveSettings({ wakeLockEnabled: v });
+    if (v && get().connection === 'connected') {
+      wakeDesired = true;
+      syncWakeLock(useFlasher.setState);
+    } else {
+      releaseWakeLock(useFlasher.setState);
+    }
+  },
+
+  /** Führt einen Steuergeräte-Job aus (0x11 Reset / 0x30 Ausgang / 0x31 Routine / 0x1A Lesen) */
+  runJob: async (job) => {
+    if (!client || get().connection !== 'connected') {
+      toast.error('Nicht verbunden');
+      return;
+    }
+    if (get().busy) {
+      toast.warning('Anderer Vorgang läuft noch');
+      return;
+    }
+    const t0 = Date.now();
+    set({ busy: true, jobRunning: job.id });
+    let result: JobResult;
+    try {
+      if (job.kind === 'reset') {
+        await client.sendRequest(job.service, job.params, { timeoutMs: 2500 });
+        result = {
+          jobId: job.id,
+          name: job.name,
+          ok: true,
+          text: 'ECU-Reset bestätigt (0x51) – Steuergerät startet neu, Diagnose-Session wird abgebaut.',
+          at: Date.now(),
+        };
+        get().log('ok', `Job ausgeführt: ${job.name}`);
+        toast.info('Steuergerät startet neu', {
+          description: get().autoReconnect && lastPort && !get().isMock ? 'Automatische Wiederverbindung …' : 'Bitte neu verbinden.',
+        });
+        void reportOperation('JOB_ECU_RESET', 'OK', { job: job.id }, Date.now() - t0);
+        // Session ist weg: sauber trennen, danach optional automatisch neu verbinden
+        setTimeout(() => {
+          void get().disconnect().then(() => {
+            if (get().autoReconnect && lastPort && !get().isMock) {
+              if (reconnectTimer) clearTimeout(reconnectTimer);
+              reconnectTimer = setTimeout(() => void get().reconnect(), 1500);
+            }
+          });
+        }, 1200);
+      } else if (job.kind === 'output') {
+        const resp = await client.sendRequest(job.service, job.params, { timeoutMs: 2500 });
+        if (resp.service !== 0x70) throw new KwpError(`Unerwartete Antwort: 0x${resp.service.toString(16)}`);
+        const localId = resp.data[0];
+        const value = resp.data[1];
+        const label = OUTPUT_LABELS[localId] ?? `Ausgang 0x${localId?.toString(16).padStart(2, '0')}`;
+        result = {
+          jobId: job.id,
+          name: job.name,
+          ok: true,
+          text: `${label} angesteuert${value ? ` (Task ${Math.round((value / 255) * 100)} %)` : ' (aus)'} – Wirkung endet automatisch.`,
+          hex: Array.from(resp.data).map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' '),
+          at: Date.now(),
+        };
+        get().log('ok', `Job ausgeführt: ${job.name} (0x70 bestätigt)`);
+        toast.success('Ausgang angesteuert', { description: label });
+        void reportOperation('JOB_OUTPUT', 'OK', { job: job.id, localId }, Date.now() - t0);
+      } else if (job.kind === 'routine') {
+        const resp = await client.sendRequest(job.service, job.params, { timeoutMs: 6000 });
+        if (resp.service !== 0x71) throw new KwpError(`Unerwartete Antwort: 0x${resp.service.toString(16)}`);
+        const status = resp.data[3];
+        const results = Array.from(resp.data.slice(4));
+        if (status !== 0x00) throw new KwpError(`Routine meldete Status 0x${status.toString(16)}`);
+        result = {
+          jobId: job.id,
+          name: job.name,
+          ok: true,
+          text:
+            results.length > 0
+              ? `Routine OK (Status 0x00) · Ergebniswerte: ${results.join(', ')}`
+              : 'Routine OK (Status 0x00).',
+          hex: Array.from(resp.data).map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' '),
+          at: Date.now(),
+        };
+        get().log('ok', `Job ausgeführt: ${job.name} · Routine-Status OK`);
+        toast.success('Routine ausgeführt', { description: job.name });
+        void reportOperation('JOB_ROUTINE', 'OK', { job: job.id }, Date.now() - t0);
+      } else {
+        // read
+        const resp = await client.sendRequest(job.service, job.params, { timeoutMs: 2500 });
+        if (resp.service !== 0x5a) throw new KwpError(`Unerwartete Antwort: 0x${resp.service.toString(16)}`);
+        const text = new TextDecoder('latin1').decode(resp.data.slice(1)).replace(/\u0000+$/g, '').trim();
+        result = {
+          jobId: job.id,
+          name: job.name,
+          ok: true,
+          text: text || '(leer)',
+          at: Date.now(),
+        };
+        get().log('ok', `Job ausgeführt: ${job.name} → „${text}“`);
+        toast.success('Wert gelesen', { description: text });
+        void reportOperation('JOB_READ', 'OK', { job: job.id }, Date.now() - t0);
+      }
+    } catch (e) {
+      const msg = errMessage(e);
+      result = { jobId: job.id, name: job.name, ok: false, text: msg, at: Date.now() };
+      get().log('error', `Job fehlgeschlagen (${job.name}): ${msg}`);
+      toast.error('Job fehlgeschlagen', { description: msg });
+      void reportOperation('JOB_RUN', 'ERROR', { job: job.id, error: msg }, Date.now() - t0);
+      // Puffer flushen, damit kein Response-Rest die nächste Aktion vergiftet
+      try {
+        await client?.drainInitAck(120);
+      } catch {
+        /* egal */
+      }
+    } finally {
+      set((s) => ({ busy: false, jobRunning: null, jobResult: result, jobHistory: [result, ...s.jobHistory].slice(0, 12) }));
+    }
   },
 
   /** Wiederverbindung über den zuletzt verwendeten Port (kein neuer requestPort-Dialog). */
@@ -600,6 +842,10 @@ export const useFlasher = create<FlasherState>((set, get) => ({
         initSteps: [`Automatisch wiederverbunden: ${lastPortLabel}`, `Schlüsselwörter 0x${kw[0].toString(16).toUpperCase()} 0x${kw[1].toString(16).toUpperCase()}`],
       });
       startKeepAlive(get, set);
+      if (get().wakeLockEnabled) {
+        wakeDesired = true;
+        syncWakeLock(useFlasher.setState);
+      }
       reconnectAttempts = 0;
       get().log('ok', 'Wiederverbindung erfolgreich – Session wiederhergestellt');
       toast.success('Wiederverbunden', { description: lastPortLabel });

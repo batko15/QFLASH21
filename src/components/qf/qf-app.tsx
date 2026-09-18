@@ -1,7 +1,22 @@
 'use client';
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { CircuitBoard, Sun, Moon, Github, Wifi } from 'lucide-react';
+import {
+  CircuitBoard,
+  Sun,
+  Moon,
+  Wifi,
+  LayoutDashboard,
+  Cable,
+  Fingerprint,
+  ScanSearch,
+  Gauge,
+  Wrench,
+  Save,
+  ShieldCheck,
+  ScrollText,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +28,7 @@ import { ConnectionPanel } from '@/components/qf/connection-panel';
 import { IdentCard } from '@/components/qf/ident-card';
 import { DtcPanel } from '@/components/qf/dtc-panel';
 import { LivePanel } from '@/components/qf/live-panel';
+import { JobsPanel } from '@/components/qf/jobs-panel';
 import { FlashPanel } from '@/components/qf/flash-panel';
 import { ChecksumPanel } from '@/components/qf/checksum-panel';
 import { LogPanel } from '@/components/qf/log-panel';
@@ -20,15 +36,16 @@ import { QfFooter } from '@/components/qf/footer';
 import { SwRegister, InstallPwaButton } from '@/components/qf/pwa';
 import { cn } from '@/lib/utils';
 
-const TABS = [
-  { value: 'uebersicht', label: 'Übersicht' },
-  { value: 'verbindung', label: 'Verbindung' },
-  { value: 'ecu-id', label: 'ECU-ID' },
-  { value: 'fehlerspeicher', label: 'Fehlerspeicher' },
-  { value: 'live', label: 'Live-Daten' },
-  { value: 'flash', label: 'Lesen/Schreiben' },
-  { value: 'pruefsumme', label: 'Prüfsumme' },
-  { value: 'protokoll', label: 'Protokoll' },
+const TABS: { value: string; label: string; short: string; icon: LucideIcon; mobile?: boolean }[] = [
+  { value: 'uebersicht', label: 'Übersicht', short: 'Start', icon: LayoutDashboard, mobile: true },
+  { value: 'verbindung', label: 'Verbindung', short: 'Verbin.', icon: Cable, mobile: true },
+  { value: 'ecu-id', label: 'ECU-ID', short: 'ECU', icon: Fingerprint },
+  { value: 'fehlerspeicher', label: 'Fehlerspeicher', short: 'Fehler', icon: ScanSearch, mobile: true },
+  { value: 'live', label: 'Live-Daten', short: 'Live', icon: Gauge, mobile: true },
+  { value: 'jobs', label: 'Jobs', short: 'Jobs', icon: Wrench, mobile: true },
+  { value: 'flash', label: 'Lesen/Schreiben', short: 'Flash', icon: Save },
+  { value: 'pruefsumme', label: 'Prüfsumme', short: 'Prüf', icon: ShieldCheck },
+  { value: 'protokoll', label: 'Protokoll', short: 'Protokoll', icon: ScrollText },
 ];
 
 export function QfApp() {
@@ -83,12 +100,13 @@ export function QfApp() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-4">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-4 sm:pb-4">
         <Tabs value={tab} onValueChange={setTab}>
           <div className="overflow-x-auto pb-1 custom-scrollbar">
             <TabsList className="inline-flex min-w-full sm:min-w-0">
               {TABS.map((t) => (
                 <TabsTrigger key={t.value} value={t.value} className="whitespace-nowrap">
+                  <t.icon className="mr-1.5 h-3.5 w-3.5 hidden sm:inline" aria-hidden />
                   {t.label}
                   {t.value === 'fehlerspeicher' && connection === 'connected' && (
                     <span className="ml-1 h-1.5 w-1.5 rounded-full bg-success" aria-hidden />
@@ -113,6 +131,9 @@ export function QfApp() {
           <TabsContent value="live">
             <LivePanel />
           </TabsContent>
+          <TabsContent value="jobs">
+            <JobsPanel />
+          </TabsContent>
           <TabsContent value="flash">
             <FlashPanel />
           </TabsContent>
@@ -126,6 +147,34 @@ export function QfApp() {
       </main>
 
       <QfFooter />
+
+      {/* Mobile-Bottom-Navigation (Android-optimiert, DeepOBD-Prinzip) */}
+      <nav
+        aria-label="Hauptnavigation"
+        className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur sm:hidden"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="grid grid-cols-5">
+          {TABS.filter((t) => t.mobile).map((t) => {
+            const active = tab === t.value;
+            return (
+              <button
+                key={t.value}
+                type="button"
+                aria-current={active ? 'page' : undefined}
+                onClick={() => setTab(t.value)}
+                className={cn(
+                  'flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 text-[10px] transition-colors',
+                  active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <t.icon className="h-5 w-5" aria-hidden />
+                <span className="font-medium">{t.short}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }
@@ -153,14 +202,5 @@ function ThemeToggle() {
 }
 
 export function GithubLink() {
-  return (
-    <a
-      href="https://github.com/uholeschak/ediabaslib"
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-    >
-      <Github className="h-3.5 w-3.5" aria-hidden /> Protokoll-Referenz
-    </a>
-  );
+  return null;
 }
