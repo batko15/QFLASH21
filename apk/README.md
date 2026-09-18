@@ -4,7 +4,7 @@
 
 | Datei | Zweck |
 |---|---|
-| `QFLASH21-v1.0.0-arm64.apk` | QFLASH21-Launcher (signiert, arm64 & alle anderen ABIs) |
+| `QFLASH21-v1.1.0-arm64.apk` | QFLASH21-Launcher (signiert, arm64 & alle anderen ABIs) |
 
 > **Empfohlener Installationsweg** bleibt die **PWA-Installation** (Chrome → „App installieren“):
 > Die installierte PWA läuft in Chrome selbst und unterstützt **Web Serial nativ** – genau wie der
@@ -28,7 +28,7 @@ zuverlässig **nur im echten Chrome** – WebView-Wrapper würden die Kernfunkti
 3. Icon „QFLASH21“ erscheint auf dem Homescreen → antippen → App öffnet in Chrome
 
 Systemvoraussetzung: **Android 7.0+** (minSdk 24) · Signatur-SHA-256:
-`8c9dfb2139127cd1866b80d95da861ad89c265222d8a67564beff5648bd68f06`
+`a2d639c236db43c40a01254561cd3d9687ad2f689ff3fd29772d072e67b7c438`
 
 ## Selbst bauen
 
