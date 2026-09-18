@@ -334,16 +334,16 @@ export function SystemCheckPanel() {
           <Button asChild>
             <a href={APK_URL} download>
               <Download className="mr-2 h-4 w-4" aria-hidden />
-              APK v{APP_VERSION} herunterladen (arm64, 2,6 MB)
+              APK v{APP_VERSION} herunterladen (arm64, 1,5 MB)
             </a>
           </Button>
           <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground">
             <li>
-              <strong className="text-foreground">Alte QFLASH21-Apps deinstallieren</strong>{' '}
-              (v1.0–v1.2 haben einen anderen Signaturschlüssel – sonst „App wurde nicht
-              installiert“).
+              <strong className="text-foreground">APK herunterladen und öffnen</strong>{' '}
+              (Dateimanager → Downloads). v1.3.1 installiert direkt über eine vorhandene
+              v1.3.0 (gleiche Signatur) – alte QFLASH21-Apps (v1.0–v1.2) können danach
+              deinstalliert werden.
             </li>
-            <li>APK herunterladen und öffnen (Dateimanager → Downloads).</li>
             <li>
               MagicOS: Bei „Aus unbekannter Quelle installieren?“ den Browser/Dateimanager
               <strong className="text-foreground"> erlauben</strong> – oder vorher
@@ -351,6 +351,11 @@ export function SystemCheckPanel() {
             </li>
             <li>Chrome muss installiert sein (die App rendert darin – Web Serial!).</li>
             <li>App öffnen → dieser System-Check muss grün zeigen.</li>
+            <li>
+              Sollte die App je Fehler zeigen: Der native{' '}
+              <strong className="text-foreground">Fehlerbericht</strong> (neu in v1.3.1)
+              erscheint mit „Fehler kopieren“-Button – Bericht einfach hier einfügen.
+            </li>
           </ol>
         </CardContent>
       </Card>
