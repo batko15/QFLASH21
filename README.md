@@ -82,6 +82,20 @@ und 512-KiB-Fake-Flash – **die komplette App inkl. aller Jobs ohne Hardware te
 
 ![Verbindung](docs/screenshots/02-verbindung.png)
 
+### 📦 DDE4-Konfigs (persönliche DeepOBD-Sammlung)
+Der Tab **„DDE4-Konfigs“** integriert die persönliche DeepOBD-Konfigsammlung
+(1434 Dateien, E38/E39/E46/E53/E6x) – analysiert und strukturiert:
+- **Echte DDE4-MWB-Sets** für `sgbd dde40kw0` (Job `mw_select_lesen_norm`):
+  Haupt-Set (Rail-/Ladedruck, Einspritzmenge, VTG), Log-Set 2 (Raildruckregelventil %),
+  Injektor-Mengenkorrektur je Zylinder (`0F19–0F1E`), Ladelufttemperatur (`norm2`/FSP 0036)
+- **Adaptions-Jobs** aus DDEAbgleich (byte-identisch für E46/E39/E53, md5 7aee86e8):
+  AGR-Abgleich + Leerlaufanhebung lesen/verstellen/programmieren
+- **Farbschwellen** 1:1 aus dem C#-FormatResult der Community-Konfigs
+- **Fahrzeugkatalog** mit ★-Markierung aller DDE4.0/EDC15C4-Konfigs
+- **Fehler-ECU-Listen** je Fahrzeuggestell (E39: 14, E46: 14, E53: 9 Steuergeräte)
+- **Download** der kompletten Sammlung: [`public/downloads/DeepOBD-Konfigs-M57-M47.zip`](public/downloads/DeepOBD-Konfigs-M57-M47.zip)
+  (in der App unter DDE4-Konfigs, für „Deep OBD für BMW und VAG“ am Telefon)
+
 ### 🛡️ Stabilität & Komfort
 - **TesterPresent-KeepAlive** (0x3E alle 3 s) mit Session-Verlust-Erkennung
 - **Auto-Reconnect** (max. 3 Versuche, auch nach ECU-Reset)

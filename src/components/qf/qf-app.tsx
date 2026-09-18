@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   ScrollText,
   Stethoscope,
+  FileArchive,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -36,6 +37,7 @@ import { SystemCheckPanel } from '@/components/qf/system-check-panel';
 import { FlashPanel } from '@/components/qf/flash-panel';
 import { ChecksumPanel } from '@/components/qf/checksum-panel';
 import { LogPanel } from '@/components/qf/log-panel';
+import { UserConfigsPanel } from '@/components/qf/user-configs-panel';
 import { QfFooter } from '@/components/qf/footer';
 import { SwRegister, InstallPwaButton } from '@/components/qf/pwa';
 import { cn } from '@/lib/utils';
@@ -47,6 +49,7 @@ const TABS: { value: string; label: string; short: string; icon: LucideIcon; mob
   { value: 'fehlerspeicher', label: 'Fehlerspeicher', short: 'Fehler', icon: ScanSearch, mobile: true },
   { value: 'live', label: 'Live-Daten', short: 'Live', icon: Gauge, mobile: true },
   { value: 'jobs', label: 'Jobs', short: 'Jobs', icon: Wrench, mobile: true },
+  { value: 'configs', label: 'DDE4-Konfigs', short: 'Konfigs', icon: FileArchive, mobile: true },
   { value: 'tuning', label: 'Tuning-Wissen', short: 'Tuning', icon: SlidersHorizontal, mobile: true },
   { value: 'check', label: 'System-Check', short: 'Check', icon: Stethoscope, mobile: true },
   { value: 'flash', label: 'Lesen/Schreiben', short: 'Flash', icon: Save },
@@ -140,6 +143,9 @@ export function QfApp() {
           <TabsContent value="jobs">
             <JobsPanel />
           </TabsContent>
+          <TabsContent value="configs">
+            <UserConfigsPanel />
+          </TabsContent>
           <TabsContent value="tuning">
             <TuningPanel />
           </TabsContent>
@@ -166,7 +172,7 @@ export function QfApp() {
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur sm:hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="grid grid-cols-7">
+        <div className="grid grid-cols-8">
           {TABS.filter((t) => t.mobile).map((t) => {
             const active = tab === t.value;
             return (
