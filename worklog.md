@@ -323,3 +323,31 @@ Nächste Schritte:
 2. DTC-Discovery-Heuristik über 23 Mursteinen-Dumps (NickTullos-Methode) → echte DDE4-Fehlernummern-Tabelle
 3. DeepOBD-Datei: falls Watcher anschlägt → PRG/GRP/ccpage integrieren (tools/deepobd-extracted/)
 4. Kennfeld-Raster-Viewer (ZedSuite-Muster) + Session-Profile in DB
+
+---
+Task ID: 10
+Agent: Z.ai Code (Hauptagent)
+Task: Proton-Drive-Link (DeepOBD.zip) herunterladen, tiefenanalysieren und in QFLASH21 integrieren
+
+Work Log:
+- Proton-Drive-Link (https://drive.proton.me/urls/GJ1HS93TGC#...) via agent-browser geöffnet: Titel „DeepOBD (1).zip – Proton Drive" → Download-Dialog (Scan & Download) bestätigt → Datei (9,62 MB) in /home/z/Downloads/ gelandet, 1 of 1 transfers completed.
+- Zip entpackt: 1434 Dateien. Anleitung.txt (Custom-Job-Guide DE/EN), DeepOBD.pdf, 2 MP4-Videos, copy_configs (E38/E39/E46/E53/E6x/E83), #ecus-Ordner.
+- **Kernfund: DDE40KW0-Konfigs für ALLE Ziel-Fahrzeuge** (die in öffentlichen Repos fehlten): E46 M57 330d (Automat+Schalter), E39 M57 525d/530d (7 Varianten inkl. +LLT/+Test), E53 X5 3.0d – mit log/log2/Injektoren/DDEAbgleich-Seiten.
+- Tiefenanalyse: Job `mw_select_lesen_norm` (sgbd dde40kw0) mit 3 verifizierten FSP-Args-Sets (Haupt: 0F100F400F421F060FFC1F5E0F8CDF0E0F000F65; Log2 mit EHMFKDR 0EA5 + EHMFLDS 0F08 + FGMFGAKT 0E81; Injektoren 0F19–0F1E), `mw_select_lesen_norm2` args=0036 → Ladelufttemperatur. DDEAbgleich byte-identisch für E46/E39/E53 (md5 7aee86e8): ABGLEICH_LESEN/VERSTELLEN/PROG × AGR_RUECK/LL_REGELUNG. Farbschwellen aus C#-FormatResult extrahiert (Spannung <10,5 rot … >14,5 rot usw.). Interface=FTDI → bestätigt FT232R/WebUSB-Treiberpfad. Errors.ccpage-ECU-Listen je Chassis (E39 14, E46 14, E53 9). DDE30DS0 (M47): STATUS_*-Jobnamen.
+- **Neues Modul** src/lib/kwp/dde4-user-configs.ts (alle Werte mit Quellenkommentar, nichts erfunden) + **neues Panel** src/components/qf/user-configs-panel.tsx (Tabs: MWB-Sets / Adaption / Katalog / Fehler-ECUs + Download-Karte + Provenienz-Block; ohne Radix-Abhängigkeiten, details-Accordion-Pattern).
+- Zip → public/downloads/DeepOBD-Konfigs-M57-M47.zip (9.620.553 B) – In-App-Download direkt vom Telefon.
+- qf-app.tsx: neuer Tab 'configs' (FileArchive-Icon) desktop + mobile (Bottom-Nav 7→8 Spalten); Overview-Tab: Schnellaktion „DDE4-Konfigs & MWB". README: neue Sektion „📦 DDE4-Konfigs (persönliche DeepOBD-Sammlung)".
+- Qualität: tsc 0 Fehler, eslint 0/0 (Fixes: Button-Import, „…"-Zitat-Anführungszeichen, Accordion/Alert → eigene Blocks).
+- E2E (agent-browser): Konfigs-Tab rendert alle 4 Sub-Tabs; Zip lokal 206/Prod 200 (content-length exakt); Golden Path: Simulator → Ident „EDC15C4-6-BMW SW DDE4.0 V41 7759 · Teile-Nr. 0 281 01…" → DTC-Lesen OK; Mobile-Viewport 390px: Bottom-Nav 8 Spalten, Höhe 57px, kein Overflow; keine Runtime-/Page-Errors nach Reload (früher Konsolenfehler = HMR-Rauschen).
+- Deploy: Commit b4c905d → GitHub batko15/QFLASH21 (Token-URL-Einmalpush, Remote danach bereinigt) → Vercel automatisch: Produktion verifiziert (Homepage mit „DDE4-Konfigs" ×2, Zip 200 application/zip 9,62 MB).
+
+Stage Summary:
+- Der lange fehlende DeepOBD-Upload ist angekommen, analysiert und vollständig integriert: QFLASH21 hat jetzt ECHTE DDE4-MWB-/Adaptions-Daten für E46 330d, E39 525d/530d und X5 3.0d statt nur DDE5-Referenzdaten.
+- Nutzer kann die komplette Konfigsammlung (1434 Dateien) direkt aus der App auf das Telefon laden und in Deep OBD nutzen (Pfad: Android/data/de.holeschak.bmw_deep_obd/files/Configurations).
+- Produktion https://qflashk.vercel.app live getestet (Tab + Download).
+
+Nächste Schritte:
+1. MWB-Sets live anschließen: Live-Panel um Job-Renderer für mw_select_lesen_norm erweitern (Args → KWP-Request → positionsgebundene Dekodierung + Schwellenfarben).
+2. Adaption-Lesen (ABGLEICH_LESEN_AGR_RUECK/LL_REGELUNG) als gefahrlose UI-Aktion im Jobs-Panel anbieten (Schreib-Jobs bleiben gesperrt).
+3. DTC-Discovery (NickTullos-Methode) über die 23 EDC15C4-Dumps → echte ORT-Texttabelle.
+4. Nutzer-Feedback zu APK v1.3.0 + System-Check einholen.
