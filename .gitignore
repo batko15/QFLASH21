@@ -43,3 +43,13 @@ tmp/
 # Sensible Dateien niemals committen
 *token*
 *credential*
+
+# Android-Build (Tools 300MB lokal, nicht ins Repo)
+tools/
+apk-src/base.apk
+apk-src/aligned.apk
+apk-src/res.zip
+apk-src/classes/
+apk-src/dexout/
+apk-src/*.keystore
+apk/out/

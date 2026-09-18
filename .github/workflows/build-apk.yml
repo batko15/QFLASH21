@@ -1,0 +1,75 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ['apk-src/**', 'scripts/make-apk-icons.mjs', '.github/workflows/build-apk.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Android SDK einrichten
+        run: |
+          cd /tmp
+          curl -sL -o bt.zip https://dl.google.com/android/repository/build-tools_r34-linux.zip
+          curl -sL -o plat.zip https://dl.google.com/android/repository/platform-34-ext7_r03.zip
+          unzip -q bt.zip && unzip -q plat.zip
+          curl -sL -o ecj.jar https://repo1.maven.org/maven2/org/eclipse/jdt/ecj/3.33.0/ecj-3.33.0.jar
+          echo "BT=$PWD/android-14" >> $GITHUB_ENV
+          echo "PLAT=$PWD/android-34/android.jar" >> $GITHUB_ENV
+          echo "ECJ=$PWD/ecj.jar" >> $GITHUB_ENV
+
+      - name: Launcher-Icons generieren
+        run: |
+          npm i -g bun >/dev/null 2>&1 || true
+          bun install --no-save sharp || npm i --no-save sharp
+          bun scripts/make-apk-icons.mjs
+
+      - name: APK bauen (aapt2 → ecj → d8 → apksigner)
+        run: |
+          cd apk-src
+          $BT/aapt2 compile --dir res -o res.zip
+          $BT/aapt2 link -o base.apk -I $PLAT --manifest AndroidManifest.xml res.zip \
+            --auto-add-overlay --min-sdk-version 24 --target-sdk-version 34
+          java -jar $ECJ -source 8 -target 8 -encoding UTF-8 -nowarn \
+            -cp $PLAT -d classes java/de/qflash21/launcher/MainActivity.java
+          mkdir -p dexout
+          java -cp $BT/lib/d8.jar com.android.tools.r8.D8 --release \
+            --lib $PLAT --min-api 24 --output dexout classes/de/qflash21/launcher/MainActivity.class
+          zip -q -j base.apk dexout/classes.dex
+          $BT/zipalign -f 4 base.apk aligned.apk
+          # Debug-Keystore für CI (Release-Key liegt nicht im Repo)
+          keytool -genkeypair -keystore ci.keystore -alias qflash21 -keyalg RSA -keysize 2048 \
+            -validity 10950 -storepass qflash21ci -keypass qflash21ci \
+            -dname "CN=QFLASH21 CI, OU=Workshop, O=batko15, C=TR"
+          $BT/apksigner sign --ks ci.keystore --ks-key-alias qflash21 \
+            --ks-pass pass:qflash21ci --key-pass pass:qflash21ci \
+            --out QFLASH21-ci.apk aligned.apk
+          $BT/apksigner verify QFLASH21-ci.apk
+          mkdir -p ../apk/out
+          cp QFLASH21-ci.apk ../apk/out/QFLASH21-ci.apk
+
+      - name: Artifact hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: QFLASH21-apk
+          path: apk/out/QFLASH21-ci.apk
+
+      - name: Release anlegen (bei Tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apk/out/QFLASH21-ci.apk

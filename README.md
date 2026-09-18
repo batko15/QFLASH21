@@ -1,58 +1,126 @@
 # QFLASH21
 
-**Lokales Diagnose- und Flash-Tool für BMW DDE4 (EDC15C4) über K-Line / KWP2000 – direkt im Browser.**
+![QFLASH21](public/icons/icon-512.png)
 
-QFLASH21 ist eine Installierbare Web-App (PWA) zur Kommunikation mit der Motorsteuerung
-**DDE4** der Modelle:
+**Lokales Diagnose- und Flash-Tool für BMW DDE4 (EDC15C4) über K-Line / KWP2000 – direkt im Browser, PWA-fähig für Android & Desktop.**
 
-| Baureihe | Modelle |
-|---|---|
-| E38 | 730d |
-| E39 | 525d / 530d |
-| E46 | 330d / 330xd |
-| E53 | X5 3.0d |
+[![Deploy with Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel)](https://vercel.com/batko15s-projects/qflashk)
+[![Database](https://img.shields.io/badge/DB-Supabase-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/dashboard/project/twredhbyehjxoadrbcqe)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
+[![PWA](https://img.shields.io/badge/PWA-installierbar-5A0FC8?logo=pwa)](#android-nutzung)
+[![Lint](https://img.shields.io/badge/ESLint-0_Fehler-brightgreen)]()
 
-## Funktionen
+QFLASH21 kommuniziert mit der Motorsteuerung **DDE4** der BMW-Diesemodelle:
 
-- **ECU-Identifikation** – 5-Baud-Init + KWP2000-Ident, DDE4.0-Erkennung über Schlüsselwörter (0x45 0x05)
-- **Fehlerspeicher** – normaler Speicher (0x18 FF00) **und** Schattenspeicher (0x18 FD00) lesen, löschen (0x14), KI-Werkstattanalyse
-- **Live-Daten** – 4 Messwertblöcke (Drehzahl, Temperatur, Einspritzmenge, Ladedruck …) mit 600-ms-Polling
-- **Flash lesen** – FULL (512 KiB) und CAL (48 KiB) über 0x35/0x36, Download als BIN
-- **Prüfsummen** – Bosch-CR2-Verifikation (16-KiB-Bänke, 2×16-Bit-Summenwörter) mit automatischer Korrektur
-- **BIN-Verwaltung** – Upload, Diff-Vergleich, Hex-Dump, Download
-- **Protokoll** – vollständiges Kommunikationslog, Export als OperationLog
+| Baureihe | Modelle | Motor |
+|---|---|---|
+| E38 | 730d | M57D30 |
+| E39 | 525d / 530d | M47/M57 |
+| E46 | 330d / 330xd | M57D30 |
+| E53 | X5 3.0d | M57D30 |
 
-## Android-Nutzung (Honor Magic Pro 8 & andere)
+---
 
-QFLASH21 läuft **direkt auf Android** über Chrome (≥ **138**) und einen USB-C-OTG-Adapter:
+## ✨ Funktionen im Detail
 
-1. **OTG-Adapter** (USB-C → USB-A) ans Handy, dann das **K+DCAN-Kabel** (FTDI FT232RL, `0403:6001`) einstecken
-2. Diese Seite in **Chrome** öffnen (HTTPS erforderlich) und ggf. über **„App installieren“** als PWA auf den Startbildschirm legen
-3. **Zündung einschalten** (Stellung 2), im Tab *Verbindung* auf **„Verbinden (echter Adapter)“** tippen
-4. Adapter im Browser-Dialog auswählen – das 5-Baud-Init dauert ca. 2 Sekunden (Bildschirm anlassen!)
+### 🔌 ECU-Identifikation
+- **5-Baud-Init** über FTDI-BREAK-Signal (200 ms/Bit, LSB-first)
+- KWP2000-Slow-Init mit Schlüsselwortprüfung (erwartet **0x45 0x05** für DDE4.0)
+- Vollständige Ident: Bosch-Nummer, Software-/Hardwarestand, Fahrzeug-Erkennung
+- Adaptive Echo-Erkennung (K-Line-Spiegelung) und 0x78-Pending-Handling
 
-> ⚠️ Web Serial benötigt **HTTPS** und einen **Chrome-Browser**. Firefox und Safari (iOS) werden nicht unterstützt.
-> Bevorzugte Kabel: FTDI FT232RL- oder ST232-Chipsätze. Bei Empfangsproblemen Baudrate auf 38400 (SLOW WRITE) stellen.
+### 🚨 Fehlerspeicher (DTC)
+- **Normaler Speicher** (Service 0x18 FF00) **und** DDE4-**Schattenspeicher** (0x18 FD00)
+- 30 EDC15-Fehlernummern mit deutschen Beschreibungen
+- Status-Byte-Dekodierung (aktuell/sporadisch/pendierend/bestätigt)
+- Löschen beider Speicher (Service 0x14) mit Bestätigung
+- **KI-Werkstattanalyse** (LLM) mit Offline-Fallback-Hinweisen
+- Bericht als Markdown exportierbar
 
-### Unterstützte Adapter
+![Fehlerspeicher](docs/screenshots/03-fehlerspeicher.png)
+
+### 📈 Live-Daten
+- 4 Messwertblöcke (Drehzahl, Kühlmitteltemperatur, Einspritzbeginn, Ladedruck-Soll/Ist, Luftmasse …)
+- 600-ms-Polling mit Grafana-artigen Anzeigen
+
+![Live-Daten](docs/screenshots/06-live-daten.png)
+
+### 💾 Flash & BIN-Verwaltung
+- **Flash lesen**: FULL (512 KiB) und CAL (48 KiB) über Services 0x35/0x36
+- **BIN-Upload** mit Automatik-Erkennung (FULL/CAL), Diff-Vergleich, Hex-Dump
+- **Bosch-CR2-Prüfsummen**: 16-KiB-Bänke, 2×16-Bit-Summenwörter LE, 16 KiB Schutzzone
+- Automatische Korrektur falscher Bänke mit Vorher/Nachher-Anzeige
+- **Schreib-Gate**: dreiagige Sicherung (Phrase „QFLASH21“ + Spannung ≥ 12 V + Backup-Pflicht)
+
+![Prüfsummen](docs/screenshots/08-pruefsumme.png)
+
+### 📜 Protokoll & OperationLog
+- Vollständiges Kommunikationslog (HEX + Zeitstempel + Richtung)
+- Dauerhafte Operationshistorie in **Supabase Postgres** (`OperationLog`)
+
+![Protokoll](docs/screenshots/09-protokoll.png)
+
+### 🧪 Simulator (ohne Fahrzeug testbar!)
+Virtuelles DDE4.0 mit echter 5-Baud-Flankendekodierung, K-Line-Echo, DTCs, Live-Werten
+und 512-KiB-Fake-Flash – **die komplette App ohne Hardware testbar**.
+
+![Verbindung](docs/screenshots/02-verbindung.png)
+
+---
+
+## 📱 Android-Nutzung (Honor Magic Pro 8 & andere)
+
+QFLASH21 läuft **direkt auf Android** – Chrome unterstützt Web Serial nativ **ab Version 138**:
+
+1. **OTG-Adapter** (USB-C → USB-A) ans Handy, dann das **K+DCAN-Kabel** einstecken
+2. QFLASH21 in **Chrome** öffnen (HTTPS) → **„App installieren“** → PWA auf dem Homescreen
+3. **Zündung Stellung 2** → Tab *Verbindung* → **„Verbinden (echter Adapter)“**
+4. Adapter im Browser-Dialog wählen – 5-Baud-Init dauert ~2 s (Bildschirm anlassen!)
+
+> ⚠️ Web Serial benötigt **HTTPS** + **Chrome ≥ 138** (Android) bzw. **Chrome/Edge ≥ 89** (Desktop).
+> Firefox und iOS/Safari werden nicht unterstützt.
+
+### Unterstützte USB-Adapter
 
 | Chipsatz | USB-ID | Status |
 |---|---|---|
-| FTDI FT232RL | `0403:6001` | empfohlen |
-| CH340/CH341 | `1A86:7523` | unterstützt |
-| CP2102 | `10C4:EA60` | unterstützt |
+| FTDI FT232RL | `0403:6001` | ✅ empfohlen |
+| CH340/CH341 | `1A86:7523` | ✅ unterstützt |
+| CP2102 | `10C4:EA60` | ✅ unterstützt |
 
-## Desktop-Nutzung
+### Baudraten
 
-Chrome oder Edge ≥ 89 (Windows/macOS/Linux) mit USB-A→USB-K-Line-Adapter.
+| Modus | Baud | Empfehlung |
+|---|---|---|
+| KWP2000-Standard | 10400 | Standard für DDE4 |
+| SLOW-WRITE | 38400 | schonend für alte/störanfällige Kabel |
+| Schnellmodus | 125000 | nur für stabile Adapter |
 
-## Entwicklung
+---
+
+## 🖼️ weitere Screenshots
+
+| Übersicht | ECU-ID |
+|---|---|
+| ![Übersicht](docs/screenshots/01-uebersicht.png) | ![ECU-ID](docs/screenshots/05-ecu-id.png) |
+
+| KI-Analyse | Flash |
+|---|---|
+| ![KI-Analyse](docs/screenshots/04-ki-analyse.png) | ![Flash](docs/screenshots/07-flash.png) |
+
+---
+
+## 🚀 Deployment (Vercel + Supabase)
+
+Die App ist als Full-Stack-Next.js auf **Vercel** deployed, Datenbank ist **Supabase Postgres**.
+Komplette Schritt-für-Schritt-Anleitung: **[DEPLOYMENT.md](DEPLOYMENT.md)**
 
 ```bash
-bun install          # Dependencies
-bun run db:push      # Prisma-Schema (SQLite) anlegen
-bun run dev          # Dev-Server auf Port 3000
-bun run lint         # ESLint (0-Warnungen-Politik)
+# Lokal entwickeln
+bun install
+cp .env.example .env        # Supabase-Credentials eintragen
+bun run db:push             # Schema zu Supabase pushen
+bun run dev                 # http://localhost:3000
 ```
 
 ### Architektur
@@ -62,34 +130,44 @@ src/
 ├── app/
 │   ├── page.tsx              # Haupt-App (8 Tabs)
 │   └── api/
-│       ├── logs/             # OperationLog (Prisma, SQLite)
-│       └── analyze-dtc/      # KI-Fehleranalyse (LLM, mit Offline-Fallback)
-├── components/qf/            # UI (Tabs, Panels, PWA)
+│       ├── logs/             # OperationLog → Supabase (Prisma)
+│       └── analyze-dtc/      # KI-Fehleranalyse (LLM + Offline-Fallback)
+├── components/qf/            # UI (Tabs, Panels, PWA, Install-Button)
 ├── lib/kwp/
 │   ├── serial-client.ts      # Web Serial: 5-Baud-Init über BREAK, Echo-Handling
 │   ├── protocol.ts           # ISO 14230 Framing + NRC-Tabelle
 │   ├── dde4.ts               # DDE4-Profil (Services, DTC-Tabelle, Security-Access)
 │   ├── checksum.ts           # Bosch-CR2-Prüfsummen
 │   ├── bin.ts                # FULL/CAL-Erkennung, Diff, Hex-Dump
-│   └── mock.ts               # Virtuelles DDE4 (Simulator, ohne Fahrzeug testbar)
-└── store/flasher.ts          # Zustand: Verbindungs-/Flash-Statusmaschine
+│   └── mock.ts               # Virtuelles DDE4 (Simulator)
+├── store/flasher.ts          # Zustand: Verbindungs-/Flash-Statusmaschine
+└── public/                   # PWA: Manifest, Icons, Service Worker
 ```
 
 ### Protokoll-Stack
 
-`Web Serial (FTDI) → 5-Baud-Init (BREAK 200 ms/Bit) → KWP2000 slow init (KW 0x45 0x05)
-→ StartCommunication (0x81) → Ident/DTC/Live/Security/Flash-Services (ISO 14230)`
+```
+Web Serial (FTDI 0403:6001)
+  → 5-Baud-Init (BREAK 200 ms/Bit, Adresse 0x12)
+  → KWP2000 Slow-Init → Schlüsselwörter 0x45 0x05
+  → StartCommunication (0x81 → 0xC1)
+  → Ident / DTC / Live / Security / Flash-Services (ISO 14230-2)
+```
 
-Schreibvorgänge sind durch ein **dreiagiges Schreib-Gate** gesichert:
-Bestätigungsphrase „QFLASH21“ + Batteriespannung ≥ 12 V + vorheriger Backup-Lesevorgang.
+### Android-APK
 
-## Sicherheit / Haftungsausschuss
+Siehe **[apk/README.md](apk/README.md)** – der QFLASH21-Launcher (arm64) sowie die
+Empfehlung, die PWA direkt zu installieren (Web Serial funktioniert in der installierten
+PWA nativ; in WebView-Wrappern dagegen nicht).
 
-Das Flashen von Steuergeräten kann **dauerhaften Schaden** verursachen (ECU-Brick, TÜV/ABE,
-Garantieverlust, Fahrzeugrecht). Diese Software ist für Bildungszwecke und mit
-**ausdrücklichem Backup** zu verwenden. Nutzung auf eigene Gefahr.
+## 🔒 Sicherheit / Haftungsausschuss
+
+Das Flashen von Steuergeräten kann **dauerhaften Schaden** verursachen (ECU-Brick,
+TÜV/ABE-Probleme, Garantieverlust, Rechtswidrigkeit im Straßenverkehr). Diese Software
+ist für Bildungszwecke, Teststände und eigene Fahrzeuge mit **ausdrücklichem Backup**
+gedacht. Nutzung ausschließlich auf eigene Gefahr.
 
 ## Credits
 
 - Protokoll-Referenz: [uholeschak/ediabaslib](https://github.com/uholeschak/ediabaslib)
-- ISO 14230 (KWP2000 on K-Line), Bosch EDC15C4
+- ISO 14230 (KWP2000 on K-Line), Bosch EDC15C4 / DDE4.0
