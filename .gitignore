@@ -63,3 +63,15 @@ apk-src/out/
 apk-src/base.apk
 apk-src/dexout/
 apk-src/classes/
+
+# APK-Build (lokal)
+apk-src/build/
+apk-src/libs/aabh/
+apk-src/libs/browser/
+apk-src/libs/core/
+apk-src/libs/vp/
+apk-src/libs/lrt/
+apk-src/libs/interp/
+apk-src/libs/annexp/
+# Signaturschlüssel: nicht im Repo (Backup lokal / Sicherungsdienst)
+apk-src/*.keystore

@@ -12,6 +12,7 @@ import {
   ScanSearch,
   Gauge,
   Wrench,
+  SlidersHorizontal,
   Save,
   ShieldCheck,
   ScrollText,
@@ -29,6 +30,7 @@ import { IdentCard } from '@/components/qf/ident-card';
 import { DtcPanel } from '@/components/qf/dtc-panel';
 import { LivePanel } from '@/components/qf/live-panel';
 import { JobsPanel } from '@/components/qf/jobs-panel';
+import { TuningPanel } from '@/components/qf/tuning-panel';
 import { FlashPanel } from '@/components/qf/flash-panel';
 import { ChecksumPanel } from '@/components/qf/checksum-panel';
 import { LogPanel } from '@/components/qf/log-panel';
@@ -43,6 +45,7 @@ const TABS: { value: string; label: string; short: string; icon: LucideIcon; mob
   { value: 'fehlerspeicher', label: 'Fehlerspeicher', short: 'Fehler', icon: ScanSearch, mobile: true },
   { value: 'live', label: 'Live-Daten', short: 'Live', icon: Gauge, mobile: true },
   { value: 'jobs', label: 'Jobs', short: 'Jobs', icon: Wrench, mobile: true },
+  { value: 'tuning', label: 'Tuning-Wissen', short: 'Tuning', icon: SlidersHorizontal, mobile: true },
   { value: 'flash', label: 'Lesen/Schreiben', short: 'Flash', icon: Save },
   { value: 'pruefsumme', label: 'Prüfsumme', short: 'Prüf', icon: ShieldCheck },
   { value: 'protokoll', label: 'Protokoll', short: 'Protokoll', icon: ScrollText },
@@ -134,6 +137,9 @@ export function QfApp() {
           <TabsContent value="jobs">
             <JobsPanel />
           </TabsContent>
+          <TabsContent value="tuning">
+            <TuningPanel />
+          </TabsContent>
           <TabsContent value="flash">
             <FlashPanel />
           </TabsContent>
@@ -154,7 +160,7 @@ export function QfApp() {
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur sm:hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="grid grid-cols-5">
+        <div className="grid grid-cols-6">
           {TABS.filter((t) => t.mobile).map((t) => {
             const active = tab === t.value;
             return (

@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="de.qflash21.launcher"
-    android:versionCode="2"
-    android:versionName="1.1.0">
+    android:versionCode="3"
+    android:versionName="1.2.0">
 
   <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34"/>
 
-  <!-- Chrome (bevorzugt, wegen Web Serial) + beliebige Browser als Fallback -->
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+  <!-- Provider-Erkennung: TWA-fähige Browser (Chrome) + beliebige Browser als Fallback -->
   <queries>
-    <package android:name="com.android.chrome"/>
+    <intent>
+      <action android:name="android.support.customtabs.action.CustomTabsService"/>
+    </intent>
     <intent>
       <action android:name="android.intent.action.VIEW"/>
       <data android:scheme="https"/>
@@ -20,16 +25,44 @@
       android:icon="@mipmap/ic_launcher"
       android:allowBackup="false"
       android:supportsRtl="true"
+      android:usesCleartextTraffic="false"
       android:theme="@android:style/Theme.Material.NoActionBar">
+
+    <!-- Trusted Web Activity: rendert qflashk.vercel.app fullscreen in Chrome
+         (Web Serial verfügbar). Verifizierung über
+         https://qflashk.vercel.app/.well-known/assetlinks.json -->
     <activity
         android:name=".MainActivity"
         android:exported="true"
         android:launchMode="singleTask"
-        android:configChanges="orientation|screenSize|keyboardHidden">
+        android:windowSoftInputMode="adjustResize"
+        android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
+      <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="https" android:host="qflashk.vercel.app"/>
+      </intent-filter>
     </activity>
+
+    <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL"
+        android:value="https://qflashk.vercel.app/"/>
+    <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
+        android:value="#09090B"/>
+    <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR_DARK"
+        android:value="#000000"/>
+    <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
+        android:value="#09090B"/>
+    <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR_DARK"
+        android:value="#000000"/>
+    <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BGCOLOR"
+        android:value="#09090B"/>
+    <!-- Ohne verifizierte Domain (oder ohne TWA-Provider) als Custom Tab öffnen -->
+    <meta-data android:name="android.support.customtabs.trusted.FALLBACK_STRATEGY"
+        android:value="customtabs"/>
   </application>
 </manifest>

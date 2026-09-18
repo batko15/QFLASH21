@@ -181,11 +181,27 @@ Web Serial (FTDI 0403:6001)
   → Ident / DTC / Live / Security / Flash-Services (ISO 14230-2)
 ```
 
-### Android-APK
+### Android-APK (v1.2.0 – TWA)
 
-Siehe **[apk/README.md](apk/README.md)** – der QFLASH21-Launcher (arm64) sowie die
-Empfehlung, die PWA direkt zu installieren (Web Serial funktioniert in der installierten
-PWA nativ; in WebView-Wrappern dagegen nicht).
+**Download:** `https://qflashk.vercel.app/apk/QFLASH21-v1.2.0.apk` (oder [apk/QFLASH21-v1.2.0.apk](apk/QFLASH21-v1.2.0.apk) im Repo).
+
+Seit **v1.2.0** ist die APK eine echte **Trusted Web Activity** (AndroidX Browser Helper):
+fullscreen in Chrome, **kein URL-Balken** (Domain-Verifizierung via
+`/.well-known/assetlinks.json`), Web-Serial-fähig, Fallback Custom Tab. Details,
+Installations-Schritte (inkl. MagicOS „Reiner Modus“ und Play Protect) und Build-Anleitung:
+**[apk/README.md](apk/README.md)**.
+
+> ⚠️ Bei Update von einer älteren APK (≤ v1.1.0): erst **deinstallieren** – v1.2.0 nutzt eine
+> neue Signatur.
+
+### Tuning-Wissen (EDC15C4/DDE 4.0)
+
+Der App-Tab **„Tuning-Wissen“** enthält die Kalibrierungs-Referenz für den M57D30
+(Stage-1-Ziel 230 PS/480 Nm, Limiter-Kette `IQ_final = min(…)`, Hardware-Guardrails,
+AFR-/SVBL-/IQ-Rechner, Klima-Referenz Gelibolu). Grundlage: Fachbericht
+„KI-Tuning-Agent für BMW EDC15“ – vollständig aufbereitet in
+**[docs/EDC15C4-KI-AGENT.md](docs/EDC15C4-KI-AGENT.md)** (inkl. AGENTS.md-System-Prompt
+und MCP-Konfiguration für Google Antigravity).
 
 ## 🔒 Sicherheit / Haftungsausschuss
 

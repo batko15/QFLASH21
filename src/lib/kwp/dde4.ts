@@ -49,6 +49,7 @@ export const DTC_TABLE: Record<number, string> = {
   242: 'Nockenwellensensor – kein Signal',
   382: 'Kühlmitteltemperatursensor – Kurzschluss nach Masse',
   438: 'Kurbelwellensensor – kein Signal',
+  4496: 'Raildruck-Plausibilität – Soll/Ist-Abweichung Kraftstoffdruck (CP1-Pumpe; oft bei Raildruck > 1350 bar, Leckage oder Verschleiß) – Notlauf möglich',
   505: 'Drosselklappen-Positionssensor – Signal unplausibel',
   573: 'Einspritzventil Zylinder 1 – Kurzschluss nach Plus',
   596: 'Einspritzventil Zylinder 3 – elektrischer Fehler',
