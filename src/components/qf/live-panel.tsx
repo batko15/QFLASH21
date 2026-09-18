@@ -24,7 +24,7 @@ function rangeFor(v: LiveValue): Range {
   if (v.unit === '1/min' || v.label.toLowerCase().includes('drehzahl')) return { min: 0, max: 5500, warnFrom: 4500 };
   if (v.unit === '°C') return { min: -20, max: 120, warnFrom: 105 };
   if (v.unit === 'mbar') return { min: 800, max: 3000, warnFrom: 2500 };
-  if (v.unit === 'V') return { min: 8, max: 16, warnFrom: 12 };
+  if (v.unit === 'V') return { min: 8, max: 16, warnTo: 12 }; // UNDERSPANNUNG warnen (flash-kritisch!)
   if (v.unit === 'ms') return { min: 0, max: 8 };
   if (v.unit === '°KW' || v.unit === '°kW') return { min: -10, max: 15 };
   if (v.unit === 'mg/Hub' || v.unit === 'mg/h') return { min: 0, max: Math.max(50, v.value * 1.4) };
@@ -68,6 +68,11 @@ function GaugeDial({ v, compact = false }: { v: LiveValue; compact?: boolean }) 
       {r.warnFrom != null && (() => {
         const wStart = START + ((r.warnFrom - r.min) / (r.max - r.min)) * SWEEP;
         return <path d={arc(rad(Math.max(START, wStart)), rad(START + SWEEP), R)} fill="none" stroke="currentColor" className="text-destructive/25" strokeWidth="7" strokeLinecap="round" />;
+      })()}
+      {r.warnTo != null && (() => {
+        // Unterspannungs-Warnzone (z. B. V < 12): Bogenanfang bis warnTo
+        const wEnd = START + ((r.warnTo - r.min) / (r.max - r.min)) * SWEEP;
+        return <path d={arc(rad(START), rad(Math.min(START + SWEEP, wEnd)), R)} fill="none" stroke="currentColor" className="text-destructive/25" strokeWidth="7" strokeLinecap="round" />;
       })()}
       {/* Wertebogen */}
       {pct > 0.005 && (
@@ -115,12 +120,15 @@ function Sparkline({ values, warn }: { values: number[]; warn: boolean }) {
   );
 }
 
-/* ── Export: CSV (Excel, Semikolon) & TSV (DeepOBD/MultiEcoScan-Stil, Tab-getrennt) ── */
+/* ── Export: CSV (Excel, Semikolon) & TSV (DeepOBD/MultiEcoScan-Stil, Tab-getrennt) ──
+   Round-Robin-sicher: Labels aus ALLEN Frames sammeln, Block-Spalte ergänzen. */
 function buildExport(frames: LiveDataFrame[], separator: ';' | '\t'): string {
-  const labels = frames[0]?.values.map((v) => v.label) ?? [];
-  const head = ['zeitstempel', ...labels.map((l) => `${l} [${frames[0]?.values.find((v) => v.label === l)?.unit ?? ''}]`)];
+  const labels = [...new Set(frames.flatMap((f) => f.values.map((v) => v.label)))];
+  const unitFor = (l: string) => frames.find((f) => f.values.some((v) => v.label === l))?.values.find((v) => v.label === l)?.unit ?? '';
+  const head = ['zeitstempel', 'block', ...labels.map((l) => `${l} [${unitFor(l)}]`)];
   const rows = frames.map((f) => [
     new Date(f.timestamp).toISOString(),
+    `0x${f.blockId.toString(16).padStart(2, '0')}`,
     ...labels.map((l) => String(f.values.find((v) => v.label === l)?.value ?? '')),
   ]);
   return [head.join(separator), ...rows.map((r) => r.join(separator))].join('\n');

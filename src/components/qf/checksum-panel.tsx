@@ -63,7 +63,9 @@ export function ChecksumPanel() {
                   </thead>
                   <tbody>
                     {results!.map((r) => {
-                      const isProtected = r.start === 0;
+                      // BOOT-Label nur bei FULL-Images: bei CAL (48 KiB) ist Bank 0
+                      // logisch Bank 28 des FULL-Images (0x74000) – nicht geschützt
+                      const isProtected = bin?.kind === 'FULL' && r.start === 0;
                       return (
                         <tr key={r.bankIndex} className="border-t">
                           <td className="px-3 py-1.5 font-mono">

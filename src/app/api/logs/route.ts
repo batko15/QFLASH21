@@ -41,7 +41,8 @@ export async function GET(req: NextRequest) {
   }
   try {
     const limitParam = req.nextUrl.searchParams.get('limit');
-    const limit = Math.min(Math.max(Number(limitParam ?? 50), 1), 200);
+    const n = Number(limitParam ?? 50);
+    const limit = Math.min(Math.max(Number.isFinite(n) ? Math.floor(n) : 50, 1), 200);
     const logs = await db.operationLog.findMany({
       orderBy: { createdAt: 'desc' },
       take: limit,

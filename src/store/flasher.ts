@@ -12,9 +12,9 @@ import { toast } from 'sonner';
 import { SerialClient, isWebSerialSupported, isAndroid, portKindFromInfo, DDE4_KEYWORDS } from '@/lib/kwp/serial-client';
 import { reportOperationSupabase } from '@/lib/supabase-log';
 import { MockSerialPort } from '@/lib/kwp/mock';
-import { DDE4, IDENT_SERVICES, LIVE_BLOCKS, liveBlockById, parseDtcResponse, OUTPUT_LABELS } from '@/lib/kwp/dde4';
+import { DDE4, IDENT_SERVICES, LIVE_BLOCKS, liveBlockById, parseDtcResponse, OUTPUT_LABELS, EWS_VERIFY_TEXT } from '@/lib/kwp/dde4';
 import type { EcuJob } from '@/lib/kwp/dde4';
-import { computeAllChecksums, fixAllChecksums, touchesProtectedArea, FULL_SIZE } from '@/lib/kwp/checksum';
+import { computeAllChecksums, fixAllChecksums, touchesProtectedArea, FULL_SIZE, CAL_OFFSET_IN_FULL } from '@/lib/kwp/checksum';
 import { analyzeBin, detectBinKind } from '@/lib/kwp/bin';
 import { KwpError } from '@/lib/kwp/types';
 import type {
@@ -97,7 +97,10 @@ interface FlasherState {
 
   // BIN & Flash
   bin: BinState | null;
-  ecuBin: { size: number; data: Uint8Array; saved: boolean; name: string } | null;
+  ecuBin: { size: number; data: Uint8Array; saved: boolean; name: string; swNumber?: string } | null;
+  /** Ergebnis des LID-Scans (0x20–0x2F, Bosch-Standard-Messwertblöcke) */
+  lidScan: { lid: number; hex: string; words: string[] }[] | null;
+  lidScanning: boolean;
   progress: FlashProgress | null;
   busy: boolean;
   lastVoltage: number | null;
@@ -132,6 +135,8 @@ interface FlasherState {
   // Live-Seiten-Konfigurator
   toggleLiveBlock: (blockId: number) => void;
   runJob: (job: EcuJob) => Promise<void>;
+  /** Scannt die Bosch-Standard-Messwertblöcke LID 0x20–0x2F (Roh-Wörter, SW-variantenspezifisch) */
+  scanLids: () => Promise<void>;
   setWakeLockEnabled: (v: boolean) => void;
 
   loadBinFile: (file: File) => Promise<void>;
@@ -158,6 +163,8 @@ const MAX_LOGS = 600;
 const LIVE_HISTORY_CAP = 120;
 const RECORDING_CAP = 1500;
 const MAX_RECONNECT_ATTEMPTS = 3;
+/** Generation-Counter: invalidiert laufende Timer bei Neu-/Trennung (ECU-Reset-Race). */
+let connectGeneration = 0;
 
 // ── Einstellungs-Persistenz (localStorage, SSR-sicher) ──
 const SETTINGS_KEY = 'qflash21.settings.v1';
@@ -256,7 +263,12 @@ function startKeepAlive(get: () => FlasherState, set: (p: Partial<FlasherState>)
         if (keepAliveFailures >= 2) {
           stopKeepAlive();
           get().stopLivePoll();
-          set({ connection: 'disconnected', portLabel: '–' });
+          // WICHTIG: Client wirklich schließen – sonst hält der alte Pump-Loop den
+          // Reader-Lock und der Auto-Reconnect scheitert an InvalidStateError
+          await client!.close();
+          client = null;
+          connectGeneration++;
+          set({ connection: 'disconnected', portLabel: '–', lastVoltage: null });
           get().log('error', 'Session-Timeout: ECU hat die Diagnose-Session abgebaut (0x3E unbeantwortet)');
           toast.warning('Verbindung verloren', { description: 'Session abgelaufen – Wiederverbindung …' });
           if (get().autoReconnect && lastPort) {
@@ -338,6 +350,8 @@ export const useFlasher = create<FlasherState>((set, get) => ({
 
   bin: null,
   ecuBin: null,
+  lidScan: null,
+  lidScanning: false,
   progress: null,
   busy: false,
   lastVoltage: null,
@@ -435,10 +449,13 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       client = new SerialClient();
       client.onLog = (dir, message, bytes) => get().log(dir, message, bytes ? Array.from(bytes).map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' ') : undefined);
       client.onDisconnect = () => {
-        if (get().connection !== 'disconnected') {
+        // Nur echte Laufzeit-Trennungen behandeln – nicht 'error'/'connecting' (sonst
+        // startet nach fehlgeschlagener Erstanmeldung eine sinnlose Reconnect-Kette)
+        const c = get().connection;
+        if (c === 'connected' || c === 'initializing') {
           stopKeepAlive();
           get().stopLivePoll();
-          set({ connection: 'disconnected', portLabel: '–', keywords: null });
+          set({ connection: 'disconnected', portLabel: '–', keywords: null, lastVoltage: null });
           get().log('error', 'Adapter getrennt (USB/OTG)');
           toast.warning('Adapter getrennt');
           if (get().autoReconnect && lastPort) {
@@ -493,8 +510,8 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       reconnectTimer = null;
     }
     reconnectAttempts = 0;
-    await client?.close();
-    client = null;
+    connectGeneration++;
+    // State ZUERST zurücksetzen – verhindert Spurious-Disconnect-Handling während close()
     set({
       connection: 'disconnected',
       portLabel: '–',
@@ -508,7 +525,10 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       initSteps: [],
       busy: false,
       progress: null,
+      lastVoltage: null,
     });
+    await client?.close();
+    client = null;
     get().log('info', 'Verbindung getrennt');
   },
 
@@ -602,7 +622,8 @@ export const useFlasher = create<FlasherState>((set, get) => ({
   },
 
   pollLiveOnce: async (blockId) => {
-    if (!client || get().connection !== 'connected') return;
+    if (!client || get().connection !== 'connected' || get().busy) return;
+    set({ busy: true }); // In-Flight-Guard: keine parallelen Requests (Antwort-Kreuzung)
     try {
       const resp = await client.sendRequest(0x21, [blockId], { timeoutMs: 1200 });
       const block = liveBlockById(blockId);
@@ -623,6 +644,8 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       if (volt) set({ lastVoltage: volt.value });
     } catch {
       // beim Polling Fehler still übergehen (K-Line-Störungen sind normal)
+    } finally {
+      set({ busy: false });
     }
   },
 
@@ -727,9 +750,13 @@ export const useFlasher = create<FlasherState>((set, get) => ({
           description: get().autoReconnect && lastPort && !get().isMock ? 'Automatische Wiederverbindung …' : 'Bitte neu verbinden.',
         });
         void reportOperation('JOB_ECU_RESET', 'OK', { job: job.id }, Date.now() - t0);
-        // Session ist weg: sauber trennen, danach optional automatisch neu verbinden
+        // Session ist weg: sauber trennen, danach optional automatisch neu verbinden.
+        // Generation-Check: bricht ab, wenn inzwischen neu verbunden/getrennt wurde.
+        const gen = connectGeneration;
         setTimeout(() => {
+          if (gen !== connectGeneration) return;
           void get().disconnect().then(() => {
+            if (gen !== connectGeneration) return;
             if (get().autoReconnect && lastPort && !get().isMock) {
               if (reconnectTimer) clearTimeout(reconnectTimer);
               reconnectTimer = setTimeout(() => void get().reconnect(), 1500);
@@ -754,10 +781,26 @@ export const useFlasher = create<FlasherState>((set, get) => ({
         toast.success('Ausgang angesteuert', { description: label });
         void reportOperation('JOB_OUTPUT', 'OK', { job: job.id, localId }, Date.now() - t0);
       } else if (job.kind === 'routine') {
-        const resp = await client.sendRequest(job.service, job.params, { timeoutMs: 6000 });
+        const resp = await client.sendRequest(job.service, job.params, { timeoutMs: 6000, pendingTimeoutMs: 12_000 });
         if (resp.service !== 0x71) throw new KwpError(`Unerwartete Antwort: 0x${resp.service.toString(16)}`);
         const status = resp.data[3];
         const results = Array.from(resp.data.slice(4));
+        // EWS-Startwertinitialisierung (0x0083): Verifybyte ist KEIN Fehlercode,
+        // sondern der Routine-Status (00 bereit / 01 schon gespeichert / 02 kein Startwert / 03 Urcode zerstört)
+        if (((job.params[1] << 8) | job.params[2]) === 0x0083) {
+          const verifyText = EWS_VERIFY_TEXT[status] ?? `Unbekanntes Verifybyte 0x${status.toString(16)}`;
+          result = {
+            jobId: job.id,
+            name: job.name,
+            ok: status !== 0x03,
+            text: `EWS-Verifybyte 0x${status.toString(16).padStart(2, '0')}: ${verifyText}`,
+            hex: Array.from(resp.data).map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' '),
+            at: Date.now(),
+          };
+          get().log('ok', `Job ausgeführt: ${job.name} · Verify 0x${status.toString(16)}`);
+          toast.success('EWS-Routine ausgeführt', { description: verifyText });
+          void reportOperation('JOB_ROUTINE', 'OK', { job: job.id, verify: status }, Date.now() - t0);
+        } else {
         if (status !== 0x00) throw new KwpError(`Routine meldete Status 0x${status.toString(16)}`);
         result = {
           jobId: job.id,
@@ -773,6 +816,7 @@ export const useFlasher = create<FlasherState>((set, get) => ({
         get().log('ok', `Job ausgeführt: ${job.name} · Routine-Status OK`);
         toast.success('Routine ausgeführt', { description: job.name });
         void reportOperation('JOB_ROUTINE', 'OK', { job: job.id }, Date.now() - t0);
+        }
       } else {
         // read
         const resp = await client.sendRequest(job.service, job.params, { timeoutMs: 2500 });
@@ -828,10 +872,11 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       client = new SerialClient();
       client.onLog = (dir, message, bytes) => get().log(dir, message, bytes ? Array.from(bytes).map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' ') : undefined);
       client.onDisconnect = () => {
-        if (get().connection !== 'disconnected') {
+        const c = get().connection;
+        if (c === 'connected' || c === 'initializing') {
           stopKeepAlive();
           get().stopLivePoll();
-          set({ connection: 'disconnected', portLabel: '–', keywords: null });
+          set({ connection: 'disconnected', portLabel: '–', keywords: null, lastVoltage: null });
           if (get().autoReconnect && lastPort) {
             if (reconnectTimer) clearTimeout(reconnectTimer);
             reconnectTimer = setTimeout(() => void get().reconnect(), 2500);
@@ -867,6 +912,47 @@ export const useFlasher = create<FlasherState>((set, get) => ({
         if (reconnectTimer) clearTimeout(reconnectTimer);
         reconnectTimer = setTimeout(() => void get().reconnect(), 3000);
       }
+    }
+  },
+
+  /** Scannt LID 0x20–0x2F (Bosch: 16 applizierbare Blöcke à 10 Messwert-Wörter).
+   *  Die konkrete Zuordnung ist SW-variantenspezifisch – der Scan liefert Roh-Wörter
+   *  zur manuellen Zuordnung (Plausibilisierung gegen Live-Daten). */
+  scanLids: async () => {
+    if (!client || get().connection !== 'connected') {
+      toast.error('Nicht verbunden');
+      return;
+    }
+    if (get().busy) {
+      toast.warning('Anderer Vorgang läuft noch');
+      return;
+    }
+    set({ lidScanning: true });
+    const rows: { lid: number; hex: string; words: string[] }[] = [];
+    let failures = 0;
+    try {
+      for (let lid = 0x20; lid <= 0x2f; lid++) {
+        try {
+          const resp = await client.sendRequest(0x21, [lid], { timeoutMs: 1200 });
+          if (resp.service !== 0x61) throw new KwpError('Unerwartete Antwort');
+          const words = Array.from(resp.data.slice(1));
+          const wordList: string[] = [];
+          for (let i = 0; i + 1 < words.length; i += 2) {
+            wordList.push(((words[i] << 8) | words[i + 1]).toString(16).padStart(4, '0').toUpperCase());
+          }
+          rows.push({ lid, hex: words.map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' '), words: wordList });
+          failures = 0;
+        } catch {
+          failures++;
+          if (failures >= 3) break; // ECU antwortet nicht mehr → Scan abbrechen
+        }
+      }
+      set({ lidScan: rows, lidScanning: false });
+      get().log('ok', `LID-Scan abgeschlossen: ${rows.length}/16 Blöcke geantwortet`);
+      toast.success('LID-Scan fertig', { description: `${rows.length} von 16 Blöcken haben geantwortet.` });
+    } catch (e) {
+      set({ lidScanning: false });
+      toast.error('LID-Scan fehlgeschlagen', { description: errMessage(e) });
     }
   },
 
@@ -924,10 +1010,25 @@ export const useFlasher = create<FlasherState>((set, get) => ({
         }
       }
       await client.sendRequest(0x37, [], { timeoutMs: 3000 });
+      // SW-Nummer aus dem Image extrahieren (Boot-Read-Layout: 6-Byte-ASCII bei 0x7BFB4,
+      // terminiert mit 0xC3 – verifiziert an 4 echten EDC15C4-Dumps, Repo Mursteinen/EcuID)
+      let swNumber: string | undefined;
+      try {
+        const SW_OFFSET = 0x7bfb4;
+        let s = '';
+        for (let i = 0; i < 8; i++) {
+          const b = image[SW_OFFSET + i];
+          if (b === 0xc3 || b < 0x30 || b > 0x39) break;
+          s += String.fromCharCode(b);
+        }
+        if (s.length >= 5) swNumber = s;
+      } catch {
+        // Layout nicht erkennbar – optional
+      }
       const name = `dde4_backup_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.bin`;
-      set({ ecuBin: { size: FULL_SIZE, data: image, saved: false, name } });
-      get().log('ok', `Flash ausgelesen: ${FULL_SIZE} Bytes`);
-      toast.success('Flash ausgelesen', { description: '512 KiB empfangen – Backup jetzt speichern!' });
+      set({ ecuBin: { size: FULL_SIZE, data: image, saved: false, name, swNumber } });
+      get().log('ok', `Flash ausgelesen: ${FULL_SIZE} Bytes${swNumber ? ` · SW-Nummer: ${swNumber}` : ''}`);
+      toast.success('Flash ausgelesen', { description: swNumber ? `512 KiB empfangen · SW ${swNumber} – Backup speichern!` : '512 KiB empfangen – Backup jetzt speichern!' });
       void reportOperation('READ_FLASH', 'OK', { size: FULL_SIZE }, Date.now() - t0);
     } catch (e) {
       get().log('error', `Flash-Lesen fehlgeschlagen: ${errMessage(e)}`);
@@ -983,6 +1084,23 @@ export const useFlasher = create<FlasherState>((set, get) => ({
     const t0 = Date.now();
     set({ busy: true, progress: { phase: 'write', current: 0, total: data.length, label: 'Schreiben startet …' } });
     try {
+      // SICHERHEITSGATE: Bildtyp bestimmen, Zieladresse ableiten, geschützte Zone prüfen.
+      // Ein CAL-Image (48 KiB) gehört nach 0x74000 – ein Write an 0x000000 würde die
+      // Boot-/Immobilizer-Zone überschreiben (ECU-Brick!).
+      const kind = detectBinKind(data.length);
+      const addr = kind === 'CAL' ? CAL_OFFSET_IN_FULL : 0x000000;
+      if (kind === 'UNKNOWN') throw new KwpError(`Unbekannte Bildgröße (${data.length} Bytes) – Schreiben verweigert.`);
+      if (touchesProtectedArea(addr)) {
+        throw new KwpError('Schreibvorgang würde geschützten Boot-Bereich (erste 16 KiB) treffen – abgelehnt.');
+      }
+      // FULL-Images: erste 16 KiB gegen ECU-Backup vergleichen – Boot-Bereich darf nicht abweichen
+      if (kind === 'FULL' && ecuBin.data.length === FULL_SIZE) {
+        for (let i = 0; i < 0x4000; i++) {
+          if (data[i] !== ecuBin.data[i]) {
+            throw new KwpError(`Boot-Bereich weicht bei Offset 0x${i.toString(16)} vom Backup ab – Schreiben verweigert (Boot-Zone wird nie überschrieben).`);
+          }
+        }
+      }
       // Security Access
       const seedResp = await client.sendRequest(0x27, [0x01], { timeoutMs: 2000 });
       const seedHi = seedResp.data[1];
@@ -990,16 +1108,20 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       const { dde4KeyFromSeed } = await import('@/lib/kwp/dde4');
       const [kHi, kLo] = dde4KeyFromSeed(seedHi, seedLo);
       await client.sendRequest(0x27, [0x02, kHi, kLo], { timeoutMs: 2000 });
-      get().log('ok', 'Security Access bestanden');
+      get().log('ok', `Security Access bestanden (Ziel: 0x${addr.toString(16).toUpperCase().padStart(6, '0')}, ${kind})`);
 
-      // Download anfragen
-      await client.sendRequest(0x34, [0x00, 0x00, 0x00, (data.length >> 16) & 0xff, (data.length >> 8) & 0xff, data.length & 0xff], { timeoutMs: 3000 });
+      // Download anfragen (6-Byte-Header: Startadresse + Länge)
+      await client.sendRequest(0x34, [(addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff, (data.length >> 16) & 0xff, (data.length >> 8) & 0xff, data.length & 0xff], { timeoutMs: 3000 });
       const chunk = 58;
       let sent = 0;
       let seq = 0;
       while (sent < data.length) {
         const len = Math.min(chunk, data.length - sent);
-        await client.sendRequest(0x36, [seq & 0xff, ...Array.from(data.subarray(sent, sent + len))], { timeoutMs: 3000 });
+        const ack = await client.sendRequest(0x36, [seq & 0xff, ...Array.from(data.subarray(sent, sent + len))], { timeoutMs: 3000 });
+        // Ack-Sequenz VALIDIEREN – sonst stille Korruption bei verlorenen/doppelten Blöcken
+        if (ack.data.length < 1 || ack.data[0] !== (seq & 0xff)) {
+          throw new KwpError(`Transfer-Ack-Sequenzfehler: erwartet ${seq & 0xff}, erhalten ${ack.data[0] ?? '–'}`);
+        }
         sent += len;
         seq++;
         if (seq % 40 === 0 || sent >= data.length) {

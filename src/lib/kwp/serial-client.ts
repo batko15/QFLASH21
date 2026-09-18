@@ -77,8 +77,10 @@ export const DEFAULT_CONFIG: ClientConfig = {
   ecuAddress: 0x12,
 };
 
-/** Erwartete Schlüsselwörter eines DDE4.0 (Bosch EDC15C4-Familie) */
-export const DDE4_KEYWORDS: [number, number] = [0x45, 0x05];
+/** Erwartete Schlüsselwörter eines DDE4.0 (Bosch EDC15C-Funktionsbeschreibung B079.CC0, Kap. 10.1.3):
+ *  Nach dem Synchronmuster 0x55 sendet das SG KW1=0x6B, KW2=0x8F (7 Datenbits, ungerade Parität).
+ *  Danach Datenkommunikation mit fest verankerten 10400 Baud. */
+export const DDE4_KEYWORDS: [number, number] = [0x6b, 0x8f];
 
 export class SerialClient {
   private port: QfSerialPort | null = null;
@@ -88,6 +90,12 @@ export class SerialClient {
   /** null = noch unbekannt, true/false = adaptiv erkannt */
   private hasEcho: boolean | null = null;
   private logId = 0;
+  /** true während/after close() – unterdrückt Spurious-onDisconnect (sauberes Trennen) */
+  private closing = false;
+  /** Throttle für Prüfsummenfehler-Logs (Resync-Storm-Gegenmittel) */
+  private lastCsumErrLog = 0;
+  /** Request-Mutex: sendRequest-Aufrufe werden serialisiert (keine kreuzenden Antworten) */
+  private requestQueue: Promise<unknown> = Promise.resolve();
   config: ClientConfig = { ...DEFAULT_CONFIG };
   onLog: LogFn = () => {};
   onDisconnect: (() => void) | null = null;
@@ -139,7 +147,8 @@ export class SerialClient {
       } catch {
         // Port geschlossen oder abgezogen
       }
-      if (this.onDisconnect) this.onDisconnect();
+      // Bewusstes close() darf KEINEN Disconnect-Alarm auslösen
+      if (!this.closing && this.onDisconnect) this.onDisconnect();
     })();
   }
 
@@ -187,17 +196,24 @@ export class SerialClient {
       await this.port.setSignals({ break: false, requestToSend: true, dataTerminalReady: true });
       lineHigh = true;
     }
-    this.onLog('info', 'Wache auf … warte auf Schlüsselwörter');
-    const kw = await this.waitForBytes(2, 2500, true);
+    this.onLog('info', 'Wache auf … warte auf Synchronmuster + Schlüsselwörter');
+    // Bosch EDC15C: SG sendet 0x55 (Synchronmuster) + KW1 + KW2. Alte/Fremd-Varianten
+    // senden evtl. kein Sync – daher 3 Bytes lesen und ggf. 0x55 verwerfen.
+    const raw = await this.waitForBytes(3, 2500, true);
+    const kw = raw[0] === 0x55 ? [raw[1], raw[2]] : [raw[0], raw[1]];
+    if (raw[0] === 0x55) this.onLog('info', 'Synchronmuster 0x55 erkannt (Bosch EDC15C)');
     this.onLog('rx', `Schlüsselwörter: 0x${kw[0].toString(16).toUpperCase()} 0x${kw[1].toString(16).toUpperCase()}`, new Uint8Array(kw));
     return [kw[0], kw[1]];
   }
 
-  /** Komplement der Schlüsselwörter senden (ISO 14230 Slow-Init) */
+  /** Komplement senden (Bosch EDC15C-Konvention: NUR invertiertes 2. Keyword, ~KW2).
+   *  (Klassisches ISO 14230 würde beide invertieren – EDC15C will nur ~KW2, danach
+   *  quittiert das SG mit der invertierten Init-Adresse als Roh-Byte.) */
   async sendKeywordComplement(kw1: number, kw2: number): Promise<void> {
-    const bytes = new Uint8Array([(kw1 ^ 0xff) & 0xff, (kw2 ^ 0xff) & 0xff]);
+    void kw1;
+    const bytes = new Uint8Array([(kw2 ^ 0xff) & 0xff]);
     await this.writeBytes(bytes);
-    this.onLog('tx', 'Komplement der Schlüsselwörter', bytes);
+    this.onLog('tx', `Invertiertes Keyword 2 (~0x${kw2.toString(16).toUpperCase().padStart(2, '0')} → 0x${bytes[0].toString(16).toUpperCase().padStart(2, '0')})`, bytes);
     await this.discardEcho(bytes);
   }
 
@@ -259,9 +275,14 @@ export class SerialClient {
             const frame = parseFrame(buf);
             return frame;
           } catch {
-            this.onLog('error', 'Prüfsummenfehler – Frame verworfen, Resync', buf);
+            // Throttle: bei K-Line-Störungen drohen sonst tausende Logs/s (Render-Storm)
+            if (Date.now() - this.lastCsumErrLog > 250) {
+              this.onLog('error', 'Prüfsummenfehler – Frame verworfen, Resync', buf);
+              this.lastCsumErrLog = Date.now();
+            }
             this.buffer.unshift(chunk[0]);
             if (Date.now() > deadline) throw new KwpError('Prüfsummenfehler (Timeout während Resync)');
+            await sleep(2); // Hot-Loop entschärfen
             continue;
           }
         }
@@ -278,10 +299,24 @@ export class SerialClient {
    * Behandelt 0x78 "Response pending", K-Line-Echo und validiert,
    * dass der Antwort-Service zum positiven Erwartungswert passt.
    */
-  async sendRequest(
+  /** Request serialisieren (Mutex) – verhindert kreuzende Antworten bei parallelen Aufrufern (Live-Poll vs. Job). */
+  sendRequest(
     service: number,
     data: number[] = [],
-    opts?: { timeoutMs?: number; expectService?: number }
+    opts?: { timeoutMs?: number; expectService?: number; pendingTimeoutMs?: number }
+  ): Promise<ParsedFrame> {
+    const run = this.requestQueue.then(
+      () => this.sendRequestExclusive(service, data, opts),
+      () => this.sendRequestExclusive(service, data, opts) // auch nach Fehler weiterlaufen
+    );
+    this.requestQueue = run.catch(() => {}); // Queue nie in rejected state lassen
+    return run;
+  }
+
+  private async sendRequestExclusive(
+    service: number,
+    data: number[] = [],
+    opts?: { timeoutMs?: number; expectService?: number; pendingTimeoutMs?: number }
   ): Promise<ParsedFrame> {
     if (!this.port) throw new KwpError('Nicht verbunden');
     const frame = buildRequest(service, data, { target: this.config.ecuAddress });
@@ -289,14 +324,16 @@ export class SerialClient {
     await this.writeBytes(frame);
     await this.discardEcho(frame);
     const timeout = opts?.timeoutMs ?? this.config.p2TimeoutMs;
-    const deadline = Date.now() + timeout;
+    let deadline = Date.now() + timeout;
     const expected = opts?.expectService ?? ((service | 0x40) & 0xff);
     for (;;) {
       const f = await this.readFrame(Math.max(80, deadline - Date.now()));
       if (f.service === 0x7f) {
-        const nrc = f.data[1];
+        const nrc = f.data[1] ?? 0xff;
         if (nrc === 0x78) {
-          this.onLog('rx', 'Response pending (0x78) – warte weiter');
+          // ISO 14230-3: P2 nach RCRRP neu starten – ECU darf bei Erase/Routinen Sekunden brauchen
+          this.onLog('rx', 'Response pending (0x78) – Deadline neu gestartet');
+          deadline = Date.now() + (opts?.pendingTimeoutMs ?? 10_000);
           continue;
         }
         this.onLog('error', `Negative Antwort: ${describeNrc(nrc)}`);
@@ -312,15 +349,25 @@ export class SerialClient {
     }
   }
 
-  /** Init-Quittung des ECU (Adresse + Komplement) abwarten und verwerfen. */
+  /** Init-Quittung des ECU verwerfen. Bosch EDC15C: SG sendet die invertierte
+   *  Init-Adresse (z. B. ~0x12 = 0xED) als ROHES Byte – kein Frame. Alles innerhalb
+   *  der Frist verwerfen (auch klassische Frame-Quittungen alter Varianten). */
   async drainInitAck(timeoutMs = 500): Promise<void> {
-    try {
-      const f = await this.readFrame(timeoutMs);
-      this.onLog('info', `Init-Quittung: Service 0x${f.service.toString(16)} (${f.data.length} Bytes)`);
-    } catch {
-      this.buffer = []; // Reste verwerfen – manche ECU quittieren gar nicht
-      this.onLog('info', 'Keine Init-Quittung (OK)');
+    const deadline = Date.now() + timeoutMs;
+    let n = 0;
+    for (;;) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      try {
+        const bytes = await this.waitForBytes(1, Math.min(remaining, 120), true);
+        n += bytes.length;
+      } catch {
+        break;
+      }
     }
+    if (n > 0) this.onLog('info', `Init-Quittung verworfen (${n} Bytes – invertierte Adresse/Reste)`);
+    else this.onLog('info', 'Keine Init-Quittung (OK)');
+    this.buffer = [];
   }
 
   async rawWrite(data: Uint8Array): Promise<void> {
@@ -329,8 +376,14 @@ export class SerialClient {
   }
 
   async close(): Promise<void> {
+    this.closing = true;
     try {
-      this.reader?.cancel();
+      await this.reader?.cancel();
+    } catch {
+      /* ignorieren */
+    }
+    try {
+      this.reader?.releaseLock(); // Lock FREIGEBEN – sonst bleibt port.close() hängen (Reconnect tot)
     } catch {
       /* ignorieren */
     }
@@ -348,5 +401,6 @@ export class SerialClient {
     this.reader = null;
     this.writer = null;
     this.buffer = [];
+    this.closing = false;
   }
 }

@@ -6,11 +6,12 @@
 
 import type { DtcEntry, EcuIdent, LiveValue } from './types';
 import { sleep } from './protocol';
+import { KwpError } from './types';
 
 export const DDE4 = {
   ecuAddress: 0x12,
   testerAddress: 0xf1,
-  keywords: [0x45, 0x05] as [number, number],
+  keywords: [0x6b, 0x8f] as [number, number], // Bosch EDC15C B079.CC0: Sync 0x55 + KW 6B 8F
   ecuName: 'DDE4.0 (Bosch EDC15C4)',
   /** StartDiagnosticSession-Parameter (Standard + erweiterte Timings) */
   startSessionParams: [0x84],
@@ -137,57 +138,77 @@ export interface LiveBlock {
   parse: (d: Uint8Array) => LiveValue[];
 }
 
+/** Längen-Guard für Live-Block-Parser: wirft bei zu kurzen Antworten statt NaN/0-Werte zu liefern. */
+function need(d: Uint8Array, n: number): void {
+  if (d.length < n) throw new KwpError(`Live-Block zu kurz (${d.length} < ${n} Bytes)`);
+}
+
 export const LIVE_BLOCKS: LiveBlock[] = [
   {
     id: 0x03,
     name: 'Grundblock: Drehzahl & Temperaturen',
-    parse: (d) => [
-      { label: 'Motordrehzahl', value: ((d[0] << 8) | d[1]) * 0.25, unit: '1/min', decimals: 0 },
-      { label: 'Kühlmitteltemperatur', value: d[2] - 48, unit: '°C', decimals: 0 },
-      { label: 'Ansauglufttemperatur', value: d[3] - 48, unit: '°C', decimals: 0 },
-      { label: 'Ladedruck (IST)', value: (d[4] << 8) | d[5], unit: 'mbar', decimals: 0 }, // absolut, 1 LSB = 1 mbar
-    ],
+    parse: (d) => {
+      need(d, 6);
+      return [
+        { label: 'Motordrehzahl', value: ((d[0] << 8) | d[1]) * 0.25, unit: '1/min', decimals: 0 },
+        { label: 'Kühlmitteltemperatur', value: d[2] - 48, unit: '°C', decimals: 0 },
+        { label: 'Ansauglufttemperatur', value: d[3] - 48, unit: '°C', decimals: 0 },
+        { label: 'Ladedruck (IST)', value: (d[4] << 8) | d[5], unit: 'mbar', decimals: 0 }, // absolut, 1 LSB = 1 mbar
+      ];
+    },
   },
   {
     id: 0x13,
     name: 'Einspritzung: Luftmasse & Hubvolumen',
-    parse: (d) => [
-      { label: 'Luftmasse', value: ((d[0] << 8) | d[1]) / 10, unit: 'g/s', decimals: 1 },
-      { label: 'Einspritzhubvolumen', value: ((d[2] << 8) | d[3]) / 100, unit: 'mm³/Hub', decimals: 2 },
-      { label: 'Einspritzbeginn (IST)', value: (((d[4] << 8) | d[5]) - 4000) / 100, unit: '°KW', decimals: 2 },
-      { label: 'Differenzdruckregelung', value: (d[6] - 128) / 10, unit: '°KW', decimals: 1 },
-    ],
+    parse: (d) => {
+      need(d, 7);
+      return [
+        { label: 'Luftmasse', value: ((d[0] << 8) | d[1]) / 10, unit: 'g/s', decimals: 1 },
+        { label: 'Einspritzhubvolumen', value: ((d[2] << 8) | d[3]) / 100, unit: 'mm³/Hub', decimals: 2 },
+        { label: 'Einspritzbeginn (IST)', value: (((d[4] << 8) | d[5]) - 4000) / 100, unit: '°KW', decimals: 2 },
+        { label: 'Differenzdruckregelung', value: (d[6] - 128) / 10, unit: '°KW', decimals: 1 },
+      ];
+    },
   },
   {
     id: 0x07,
     name: 'Bordnetz & Umgebung',
-    parse: (d) => [
-      { label: 'Batteriespannung', value: d[0] / 10, unit: 'V', decimals: 1 },
-      { label: 'Außentemperatur', value: d[1] - 48, unit: '°C', decimals: 0 },
-      { label: 'Kraftstofftemperatur', value: d[2] - 48, unit: '°C', decimals: 0 },
-      { label: 'Betriebsstunden-Zähler', value: (d[3] << 8) | d[4], unit: 'h', decimals: 0 },
-    ],
+    parse: (d) => {
+      need(d, 5);
+      return [
+        { label: 'Batteriespannung', value: d[0] / 10, unit: 'V', decimals: 1 },
+        { label: 'Außentemperatur', value: d[1] - 48, unit: '°C', decimals: 0 },
+        { label: 'Kraftstofftemperatur', value: d[2] - 48, unit: '°C', decimals: 0 },
+        { label: 'Betriebsstunden-Zähler', value: (d[3] << 8) | d[4], unit: 'h', decimals: 0 },
+      ];
+    },
   },
   {
     id: 0x15,
     name: 'Fahrer & Abgas',
-    parse: (d) => [
-      { label: 'Fahrpedalstellung', value: d[0] / 2.55, unit: '%', decimals: 1 },
-      { label: 'AGR-Position', value: d[1] / 2.55, unit: '%', decimals: 1 },
-      { label: 'Laderstellposition', value: d[2] / 2.55, unit: '%', decimals: 1 },
-      { label: 'Glühzeitrestwert', value: d[3], unit: 's', decimals: 0 },
-    ],
+    parse: (d) => {
+      need(d, 4);
+      return [
+        { label: 'Fahrpedalstellung', value: d[0] / 2.55, unit: '%', decimals: 1 },
+        { label: 'AGR-Position', value: d[1] / 2.55, unit: '%', decimals: 1 },
+        { label: 'Laderstellposition', value: d[2] / 2.55, unit: '%', decimals: 1 },
+        { label: 'Glühzeitrestwert', value: d[3], unit: 's', decimals: 0 },
+      ];
+    },
   },
   {
     // EDC15C4/DDE4-Zusatzsensoren (dokumentiert: OTF/KTF/AT1/AT2, ECUConnections-Guide)
     id: 0x17,
     name: 'Öl & Abgastemperatur',
-    parse: (d) => [
-      { label: 'Öltemperatur', value: d[0] - 48, unit: '°C', decimals: 0 },
-      { label: 'Abgastemperatur AT1', value: ((d[1] << 8) | d[2]) / 10 - 40, unit: '°C', decimals: 1 },
-      { label: 'Abgastemperatur AT2', value: ((d[3] << 8) | d[4]) / 10 - 40, unit: '°C', decimals: 1 },
-      { label: 'Ölstand', value: d[5] / 2.55, unit: '%', decimals: 1 },
-    ],
+    parse: (d) => {
+      need(d, 6);
+      return [
+        { label: 'Öltemperatur', value: d[0] - 48, unit: '°C', decimals: 0 },
+        { label: 'Abgastemperatur AT1', value: ((d[1] << 8) | d[2]) / 10 - 40, unit: '°C', decimals: 1 },
+        { label: 'Abgastemperatur AT2', value: ((d[3] << 8) | d[4]) / 10 - 40, unit: '°C', decimals: 1 },
+        { label: 'Ölstand', value: d[5] / 2.55, unit: '%', decimals: 1 },
+      ];
+    },
   },
 ];
 
@@ -216,7 +237,16 @@ export const ROUTINES = {
   egrTest: 0xe103,
   adaptReset: 0xe104,
   idleIncrease: 0xe105,
+  ewsInit: 0x0083, // EWS-Startwertinitialisierung (Bosch EDC15C Kap. 10.1.2.30)
 } as const;
+
+/** Verifybyte der EWS-Startwertinitialisierung (Bosch EDC15C, REYO-Antwort) */
+export const EWS_VERIFY_TEXT: Record<number, string> = {
+  0x00: 'DDE bereit – Startwertinitialisierung ausgeführt',
+  0x01: 'Startwert schon gespeichert (keine Aktion nötig)',
+  0x02: 'Noch kein Startwert vorhanden',
+  0x03: 'Urcode im EEPROM zerstört – NICHT heilbar (Recyclingfall)',
+};
 
 /* ── Steuergeräte-Jobs (DeepOBD-inspiriert: SG-Reset, Aktuatorik, Routinen, AIF/ZUSB) ── */
 
@@ -310,6 +340,29 @@ export const JOBS: EcuJob[] = [
     params: [0x01, 0xe1, 0x05],
     note: 'Motor im Leerlauf, Gangneutral. Im Live-Block 0x03 sichtbar.',
     duration: 1200,
+  },
+  {
+    // Bosch EDC15C Kap. 10.1.2.30: EWS-Startwertinitialisierung (RLI 0x83)
+    id: 'routine-ews-init-virgin',
+    name: 'EWS-Startwertinitialisierung (jungfräuliches SG, REYO 00)',
+    desc: 'Programmiert ein jungfräuliches Steuergerät für die Wegfahrsperre neu ein (Routine 0x31/83).',
+    kind: 'routine',
+    danger: 'danger',
+    service: 0x31,
+    params: [0x01, 0x00, 0x83, 0x00],
+    note: 'NUR mit Eigentümer-Freigabe! Nur nach Tausch/Neuprogrammierung des SG. Verifybyte wird ausgewertet.',
+    duration: 1500,
+  },
+  {
+    id: 'routine-ews-init-used',
+    name: 'EWS-Startwertinitialisierung (gebrauchtes SG, REYO 01)',
+    desc: 'Setzt die EWS-Startwerte eines gebrauchtes SG zurück (Routine 0x31/83).',
+    kind: 'routine',
+    danger: 'danger',
+    service: 0x31,
+    params: [0x01, 0x00, 0x83, 0x01],
+    note: 'NUR mit Eigentümer-Freigabe! Heilt EWS-Fehler M/P/T/W (Urcode-Defekt 0x03 NICHT heilbar).',
+    duration: 1500,
   },
   {
     id: 'output-glow',

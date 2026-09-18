@@ -52,6 +52,9 @@ export function JobsPanel() {
   const jobResult = useFlasher((s) => s.jobResult);
   const jobHistory = useFlasher((s) => s.jobHistory);
   const runJob = useFlasher((s) => s.runJob);
+  const scanLids = useFlasher((s) => s.scanLids);
+  const lidScan = useFlasher((s) => s.lidScan);
+  const lidScanning = useFlasher((s) => s.lidScanning);
   const isMock = useFlasher((s) => s.isMock);
 
   const [confirmJob, setConfirmJob] = useState<EcuJob | null>(null);
@@ -150,6 +153,50 @@ export function JobsPanel() {
           </CardContent>
         </Card>
       ))}
+
+      {/* LID-Scan (Bosch EDC15C: 16 applizierbare Messwertblöcke) */}
+      <Card>
+        <CardHeader className="flex-row items-start justify-between space-y-0 pb-3">
+          <div className="space-y-1.5">
+            <CardTitle className="text-base">Messwertblock-Scan (LID 0x20–0x2F)</CardTitle>
+            <CardDescription>
+              Liest die 16 Bosch-Standard-Messwertblöcke (je 10 Wörter). Die Zuordnung ist
+              SW-variantenspezifisch – Roh-Werte zur Plausibilisierung gegen die Live-Daten.
+            </CardDescription>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void scanLids()}
+            disabled={!connected || busy || lidScanning}
+          >
+            {lidScanning ? <Loader2 className="animate-spin" /> : <ScanSearch />}
+            {lidScanning ? 'Scanne …' : 'Scan starten'}
+          </Button>
+        </CardHeader>
+        {lidScan && lidScan.length > 0 && (
+          <CardContent>
+            <div className="max-h-64 overflow-y-auto custom-scrollbar rounded-lg border">
+              <table className="w-full text-left font-mono text-[11px]">
+                <thead className="sticky top-0 bg-muted">
+                  <tr>
+                    <th className="px-3 py-1.5 font-semibold">LID</th>
+                    <th className="px-3 py-1.5 font-semibold">Messwert-Wörter (HEX, 10×16 Bit)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lidScan.map((r) => (
+                    <tr key={r.lid} className="border-t">
+                      <td className="px-3 py-1.5 font-bold">0x{r.lid.toString(16).toUpperCase()}</td>
+                      <td className="px-3 py-1.5 break-all text-muted-foreground">{r.words.join(' ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        )}
+      </Card>
 
       {/* Historie */}
       {jobHistory.length > 0 && (

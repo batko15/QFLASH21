@@ -3,7 +3,7 @@
  *
  * Emuliert die für QFLASH21 relevante Teilmenge der Web-Serial-API
  * und verhält sich wie ein echtes DDE4 an der K-Line:
- *  - 5-Baud-Init per BREAK-Taktung → Schlüsselwörter 0x45 0x05
+ *  - 5-Baud-Init per BREAK-Taktung → Sync 0x55 + Schlüsselwörter 0x6B 0x8F (Bosch EDC15C)
  *  - K-Line-Echo (Eindraht-Bus) wie beim echten Adapter
  *  - KWP2000-Services: 0x10, 0x1A (Ident), 0x18/0x14 (Fehlerspeicher
  *    normal + Schatten), 0x21 (Live-Daten), 0x27 (Security Access),
@@ -57,6 +57,10 @@ export class MockSerialPort implements QfSerialPort {
   private idleBoostUntil = 0;
   private egrOverrideUntil = 0;
   private egrOverrideValue = 0;
+  /** EWS-Status (RLI 0x06): 0x00 = bereit, 0x02 = noch kein Startwert (jungfräulich) */
+  private ewsStatus = 0x02;
+  /** Zähler für Live-Synthese im LID-Scan (0x20–0x2F) */
+  private heartbeats = 0;
   private n75OverrideUntil = 0;
   private n75OverrideValue = 0;
   private glowUntil = 0;
@@ -160,7 +164,8 @@ export class MockSerialPort implements QfSerialPort {
     this.breakFlanks = [];
     this.initDone = true;
     this.expectComplement = true;
-    void sleep(60).then(() => this.pushBytes(new Uint8Array(DDE4.keywords)));
+    // Bosch EDC15C: Synchronmuster 0x55 + Keywords (KW1=0x6B, KW2=0x8F)
+    void sleep(60).then(() => this.pushBytes(new Uint8Array([0x55, ...DDE4.keywords])));
   }
 
   private pushBytes(bytes: Uint8Array): void {
@@ -175,16 +180,15 @@ export class MockSerialPort implements QfSerialPort {
 
     for (const b of chunk) this.receiveQueue.push(b);
 
-    // Nach Init: 2 Bytes Komplement der Schlüsselwörter erwarten
+    // Nach Init: 1 Byte invertiertes 2. Keyword (~KW2) erwarten (Bosch EDC15C-Konvention)
     if (this.expectComplement) {
-      if (this.receiveQueue.length < 2) return;
+      if (this.receiveQueue.length < 1) return;
       const a = this.receiveQueue.shift() as number;
-      const b = this.receiveQueue.shift() as number;
       this.expectComplement = false;
       // GUI-seitig wird der Echo-Teil vom Client verworfen; wir akzeptieren direkt.
-      if (a === (DDE4.keywords[0] ^ 0xff) && b === (DDE4.keywords[1] ^ 0xff)) {
-        // Positiv: Adresse + Komplement quittieren (ISO 14230)
-        void sleep(10).then(() => this.pushBytes(new Uint8Array([DDE4.ecuAddress, (DDE4.ecuAddress ^ 0xff) & 0xff])));
+      if (a === (DDE4.keywords[1] ^ 0xff)) {
+        // Positiv: invertierte Init-Adresse als ROHES Byte quittieren (Bosch: ~0x12 = 0xED)
+        void sleep(10).then(() => this.pushBytes(new Uint8Array([(DDE4.ecuAddress ^ 0xff) & 0xff])));
       }
       // Rest im Puffer belassen (Echo-Bytes werden clientseitig verworfen)
     }
@@ -282,6 +286,25 @@ export class MockSerialPort implements QfSerialPort {
 
       case 0x21: { // ReadDataByLocalIdentifier
         const id = data[0];
+        // Bosch EDC15C: RLI 0x06 = EWS-Status
+        if (id === 0x06) {
+          await sleep(22);
+          this.respond(0x61, [0x06, this.ewsStatus]);
+          return;
+        }
+        // Bosch EDC15C: LID 0x20–0x2F = 16 applizierbare Blöcke à 10 Messwert-Wörter.
+        // Antwort bricht bei undefinierter Position ab – hier: alle 10 Wörter definiert.
+        if (id >= 0x20 && id <= 0x2f) {
+          this.heartbeats++;
+          const words: number[] = [];
+          for (let i = 0; i < 10; i++) {
+            const w = (id * 1013 + i * 997 + this.heartbeats * 13) & 0xffff;
+            words.push((w >> 8) & 0xff, w & 0xff);
+          }
+          await sleep(22);
+          this.respond(0x61, [id, ...words]);
+          return;
+        }
         const vals = this.liveValues(id);
         await sleep(22);
         if (vals) this.respond(0x61, [id, ...vals]);
@@ -348,6 +371,22 @@ export class MockSerialPort implements QfSerialPort {
           await sleep(160);
           this.idleBoostUntil = Date.now() + 20000;
           this.respond(0x71, [data[0], 0xe1, 0x05, 0x00, 0x00, 0xfa]);
+        } else if (routine === 0x0083) {
+          // EWS-Startwertinitialisierung (Bosch EDC15C Kap. 10.1.2.30)
+          // REYO: data[3] = 00 jungfräulich / 01 gebraucht · Antwort: Verifybyte
+          await sleep(240);
+          const reyo = data[3] ?? 0x00;
+          if (reyo === 0x00) {
+            // Jungfräuliches SG programmieren → danach bereit
+            this.ewsStatus = 0x00;
+            this.respond(0x71, [data[0], 0x00, 0x83, 0x00]);
+          } else if (reyo === 0x01) {
+            // Gebrauchtes SG zurücksetzen: 1× „schon gespeichert", danach bereit
+            this.ewsStatus = 0x00;
+            this.respond(0x71, [data[0], 0x00, 0x83, 0x01]);
+          } else {
+            this.respondError(0x31, 0x12); // unplausible Anforderung
+          }
         } else {
           this.respondError(0x31, 0x12);
         }
@@ -384,6 +423,11 @@ export class MockSerialPort implements QfSerialPort {
             this.respondError(0x36, 0x24);
             return;
           }
+          // Bounds-Check: Überlauf (chunk größer als Rest) → RequestSequenceError statt RangeError
+          if (this.downloadPending.received + chunk.length > this.downloadPending.size) {
+            this.respondError(0x36, 0x24);
+            return;
+          }
           this.downloadPending.buf.set(chunk, this.downloadPending.received);
           this.downloadPending.received += chunk.length;
           this.downloadPending.seq++;
@@ -415,12 +459,20 @@ export class MockSerialPort implements QfSerialPort {
         await sleep(30);
         if (this.downloadPending) {
           const d = this.downloadPending;
-          if (d.received >= d.size) {
-            this.flash.set(d.buf, d.addr);
-            fixAllChecksums(this.flash); // ECU fixt CR2 selbst beim Verlassen
-            this.flashDirty = true;
-          }
           this.downloadPending = null;
+          if (d.received !== d.size) {
+            // Unvollständiger Transfer ist KEIN Erfolg – sonst meldet der Simulator
+            // „geschrieben & verifiziert" für einen gar nicht übernommenen Zustand
+            this.respondError(0x37, 0x24);
+            return;
+          }
+          if (d.addr + d.size > this.flash.length) {
+            this.respondError(0x37, 0x31); // RequestOutOfRange
+            return;
+          }
+          this.flash.set(d.buf, d.addr);
+          fixAllChecksums(this.flash); // ECU fixt CR2 selbst beim Verlassen
+          this.flashDirty = true;
         }
         this.respond(0x77, []);
         return;

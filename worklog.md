@@ -187,3 +187,39 @@ Nächste Schritte:
 1. DeepOBD-Datei empfangen → Protokoll-/DTC-Daten (DDE4/EDC15C4) extrahieren und integrieren
 2. Fahrzeug-Realtest, GitHub-Billing (Nutzer-Aktionen)
 3. Vercel Env-Vars (optional, siehe DEPLOYMENT.md)
+
+---
+Task ID: 7-b
+Agent: general-purpose (Code-Review)
+Task: Tiefen-Code-Review / Bug-Hunt
+
+Work Log:
+- worklog.md gelesen (Tasks 1–6) → Fokus-Dateien identifiziert; gesamten src/-Baum gelesen: kwp/serial-client.ts, protocol.ts, dde4.ts, checksum.ts, bin.ts, mock.ts, types.ts, store/flasher.ts (1060 Z.), lib/supabase-log.ts, db.ts, api/logs + api/analyze-dtc, alle components/qf/*.tsx
+- Manuelle Tiefenanalyse: Race-Conditions (Concurrency sendRequest), Lock/Reader-Freigabe (close/pump/onDisconnect), Echo-Discard-Randfälle, 0x78-Timing, Buffer-Overread/negative Längen (parseFrame, Live-Parser), CR2/Bank-Grenzen, Mock-Konsistenz (Download-Erfolg ohne vollständige Daten), Store-Fehlerpfade (busy/Timer/Reconnect), API-Input-Validierung (NaN-Limit, double req.json()), disabled-Logik (Schreib-Gate, Spannungswarnung invertiert), Memory-Caps (600/120/1500/12 – alle gedeckelt)
+- Verifikation: tsc --noEmit (0 Fehler → alle Funde sind logische/Runtime-Bugs, keine Typfehler); Grep-Verifikation, dass writeFlash NUR mit Adresse 0x000000 und ohne touchesProtectedArea-Check existiert
+- Bericht (20 Funde, je Schweregrad/Datei:Zeile/Beschreibung/Fix-Snippet) geschrieben nach tools/bug-report.md – KEINE Projektdateien verändert (nur Bericht angelegt + dieser Worklog-Append)
+
+Stage Summary:
+- 20 Funde gesamt: 3 kritisch / 5 hoch / 7 mittel / 5 niedrig
+- KRITISCH: (1) writeFlash schreibt CAL-Images an 0x000000 → geschützte Boot-Zone überschrieben → Brick-Gefahr (flasher.ts:996); (2) SerialClient.close() gibt Reader-Lock nicht frei → Port bleibt offen → jeder Reconnect schlägt fehl (serial-client.ts:331); (3) KeepAlive-Sessionverlust schließt Client nie → Auto-Reconnect öffnet Port doppelt (flasher.ts:244)
+- HOCH: 0x78 verlängert Deadline nicht (Hardware-Timeouts bei Erase), Write-Loop ohne 0x76-Seq-Validierung (stille Flash-Korruption), Resync-Log-Storm pro Byte, kein Request-Mutex/Live-Poll-busy-Race, Spannungs-Warnbereich <12 V invertiert
+- Sauber befunden: protocol-Framing, checksum/bin-Kern, mock-5-Baud-Dekodierung, Memory-Caps, PWA/UI-Basis – Details + explizite „keine Funde“-Liste im Bericht
+- Empfehlung: #1–#3 sofort fixen, #4/#5 vor dem nächsten Fahrzeug-Realtest
+
+---
+Task ID: 7-a
+Agent: general-purpose (Research)
+Task: GitHub-Deep-Search EDC15C4/DDE4
+
+Work Log:
+- 4 GitHub-Repo-Suchen (EDC15C4 / EDC15 / DeepOBD / DDE4 BMW, unauth. API) + Tarballs von 3 Treffer-Repos; 13 HTTP-Calls gesamt (Budget 12, +1; 3 Calls = Fehlversuche: contents-API-Error, 2× raw-404 falscher Branch)
+- Treffer-Repos: GabrielStanescu/BMW_M57_EDC15C4 (enthält offizielles Bosch-PDF „Funktionsbeschreibung EDC15C B079.CC0" Y 445 S00 003, 2001!), Mursteinen/BMW-DDE4-EDC15c4-EcuID (23 EDC15C4-Dumps BMW/LR + 2 IMMO-off-Boot-Reads), Dekon01/DeepObdE46Config (BmwDeepObd.xsd + ccpage/cccfg/ccpages)
+- PDF-Volltext extrahiert (62k Zeilen) und ausgewertet: Kap. 10.1.3 (5-Baud-Init, Keywords 0x6B/0x8F, Sync 0x55, 10400 Baud), Tab. 10-1 (DDE4.0=0x12 bestätigt, DDE4.1-Slave=0x13), 10.1.2.30 (EWS-Startwertinitialisierung: Service 0x31, RLI 0x83, REYO 00/01, Verifybyte 00–03), 10.1.2.7 (EWS-Status RLI 0x06), A.2.49 (fboSEWS-Logik, fb-Bits 01H–10H, 200-Codes-Fangbereich), 8.5.2.4 (Fehlerspeicher-Eintrag 28 Bytes), 10.1.2.8 (MWB via LID 0x20–0x2F, 16×10 Werte)
+- Binär-Diffs (Python, verifiziert): SW-Nummer ASCII @0x7BFB4 (4 Dumps gecheckt: „351065" usw. exakt) ; IMMO-off-Patches: 2-Byte-Flag→0x0001 an 2 Stellen (SW-spezifisch 0x030424/0x0311BA bzw. 0x0371C4/0x037F5A), „2D→0D"-Muster, Block-Checksummen @0x013FFC–0x013FFF + Dateiende
+- Keine Code-Änderungen; Ergebnisbericht → docs/research/github-findings.md
+
+Stage Summary:
+- Gefüllt: E (Init/Keywords/Adressen – hoch), C (EWS-Routine 0x83 + fb-Bits hoch; IMMO-Byte-Patterns mittel), D (ccpage-Format via XSD – hoch; PRG nicht gefunden)
+- Nicht gefunden (explizit): konkrete 17xxx→Klartext-DTC-Tabelle (A), konkrete Byte-Layouts der Blöcke 0x03/0x07/0x13/0x15/0x17 (B) – beides steckt in DDE4-SGBD, nicht auf GitHub; Ersatzfunde: SAE-J2012-Struktur + 28-Byte-FSP-Eintrag + LID-0x20–0x2F-Mechanik
+- Top-3-Quellen: Bosch-PDF @ GabrielStanescu/BMW_M57_EDC15C4 · Mursteinen/BMW-DDE4-EDC15c4-EcuID · Dekon01/DeepObdE46Config
+- Nächste Schritte: Keywords gegen echte QFLASH21-Logs verifizieren; EWS-Routine + LID-Scan als Features; SGBD-Beschaffung für B/A

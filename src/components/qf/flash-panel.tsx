@@ -41,6 +41,7 @@ export function FlashPanel() {
   const progress = useFlasher((s) => s.progress);
   const bin = useFlasher((s) => s.bin);
   const ecuBin = useFlasher((s) => s.ecuBin);
+  const ident = useFlasher((s) => s.ident);
   const loadBinFile = useFlasher((s) => s.loadBinFile);
   const readEcuFlash = useFlasher((s) => s.readEcuFlash);
   const saveEcuBin = useFlasher((s) => s.saveEcuBin);
@@ -151,7 +152,10 @@ export function FlashPanel() {
                 type="file"
                 accept=".bin,.BIN,.ori,.mod,application/octet-stream"
                 className="sr-only"
-                onChange={(e) => void onFiles(e.target.files)}
+                onChange={(e) => {
+                  void onFiles(e.target.files);
+                  e.currentTarget.value = ''; // erneutes Wählen derselben Datei muss change feuern
+                }}
               />
             </div>
 
@@ -211,6 +215,17 @@ export function FlashPanel() {
               <Download /> Backup speichern
             </Button>
           </CardFooter>
+          {ecuBin?.swNumber && (
+            <CardFooter className="border-t py-3">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">SW-Nummer (aus Image @ 0x7BFB4):</span>{' '}
+                <span className="font-mono font-semibold">{ecuBin.swNumber}</span>
+                {ident?.softwareVersion && !ident.softwareVersion.includes(ecuBin.swNumber) && (
+                  <span className="ml-2 text-warning">· weicht von Ident ab ({ident.softwareVersion})</span>
+                )}
+              </p>
+            </CardFooter>
+          )}
         </Card>
 
         <Card>

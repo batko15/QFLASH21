@@ -24,8 +24,9 @@ const FALLBACK_HINTS: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
+  // Body NUR EINMAL lesen (single-use) – der Fallback braucht dieselben Daten
+  const body: Record<string, unknown> = await req.json().catch(() => ({}));
   try {
-    const body = await req.json();
     const dtcs: DtcInput[] = Array.isArray(body.dtcs) ? body.dtcs.slice(0, 12) : [];
     const vehicle = String(body.vehicle ?? 'unbekannt');
     const ecuType = String(body.ecuType ?? 'DDE4.0');
@@ -71,8 +72,7 @@ Halte es kompakt (max. 250 Wörter), nutze Aufzählungen. Keine HTML-Tags, nur e
     return NextResponse.json({ analysis, source: 'llm' });
   } catch (e) {
     console.error('[api/analyze-dtc]', e);
-    // Fallback: statische Hinweise
-    const body = await req.json().catch(() => ({}));
+    // Fallback: statische Hinweise (wiederverwendet das oben gelesene body!)
     const dtcs: DtcInput[] = Array.isArray(body.dtcs) ? body.dtcs : [];
     const hints = dtcs.map((d) => {
       const hint = FALLBACK_HINTS[d.code];
