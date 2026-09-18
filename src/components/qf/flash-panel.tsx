@@ -31,6 +31,7 @@ import { Label } from '@/components/ui/label';
 import { useFlasher } from '@/store/flasher';
 import { diffBins, formatHexOffset, formatSize } from '@/lib/kwp/bin';
 import { PROTECTED_AREA_SIZE } from '@/lib/kwp/checksum';
+import { BinDiffCard } from '@/components/qf/bin-diff-card';
 
 const CONFIRM_PHRASE = 'QFLASH21';
 
@@ -272,6 +273,8 @@ export function FlashPanel() {
           </CardFooter>
         </Card>
       </div>
+
+      <BinDiffCard />
 
       {/* Schreib-Gate */}
       <Dialog open={gateOpen} onOpenChange={setGateOpen}>

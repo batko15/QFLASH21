@@ -405,15 +405,18 @@ export class MockSerialPort implements QfSerialPort {
     const t = (Date.now() - this.bootTime) / 1000;
     const rpm = Math.round((780 + Math.sin(t / 2.3) * 18 + Math.sin(t * 2.1) * 6) * 4);
     switch (id) {
-      case 0x03:
+      case 0x03: {
+        // Ladedruck IST: ~1050 mbar absolut im Leerlauf, leicht schwankend (1 LSB = 1 mbar)
+        const boost = Math.round(1050 + Math.sin(t / 1.7) * 22 + Math.sin(t * 0.9) * 12);
         return [
           (rpm >> 8) & 0xff,
           rpm & 0xff,
           Math.min(88, 62 + Math.floor(t / 10)) + 48,
           38 + 48,
-          0x09, // Ladedruck IST ~900 mbar
-          0x60,
+          (boost >> 8) & 0xff,
+          boost & 0xff,
         ];
+      }
       case 0x13: {
         const maf = Math.round((12.4 + Math.sin(t / 3.1) * 0.9) * 10);
         const inj = Math.round((8.2 + Math.sin(t / 4) * 0.4) * 100);

@@ -1,5 +1,5 @@
 /* QFLASH21 Service Worker – Offline-Fähigkeit für Android-PWA */
-const CACHE = 'qflash21-v1';
+const CACHE = 'qflash21-v2';
 const PRECACHE = [
   '/',
   '/manifest.json',

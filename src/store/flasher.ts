@@ -67,6 +67,12 @@ interface FlasherState {
   // Live-Daten
   liveFrames: Record<number, LiveDataFrame>;
   livePolling: boolean;
+  liveHistory: Record<number, LiveDataFrame[]>;
+  recording: boolean;
+  recordedFrames: LiveDataFrame[];
+
+  // Einstellungen
+  autoReconnect: boolean;
 
   // BIN & Flash
   bin: BinState | null;
@@ -94,6 +100,11 @@ interface FlasherState {
   pollLiveOnce: (blockId: number) => Promise<void>;
   startLivePoll: (blockId: number) => void;
   stopLivePoll: () => void;
+  startRecording: () => void;
+  stopRecording: () => void;
+  clearRecording: () => void;
+  setAutoReconnect: (v: boolean) => void;
+  reconnect: () => Promise<void>;
 
   loadBinFile: (file: File) => Promise<void>;
   readEcuFlash: () => Promise<void>;
@@ -106,8 +117,87 @@ interface FlasherState {
 
 let client: SerialClient | null = null;
 let liveTimer: ReturnType<typeof setInterval> | null = null;
+let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+let keepAliveFailures = 0;
+let reconnectAttempts = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let lastPort: Awaited<ReturnType<typeof SerialClient.requestPort>> | null = null;
+let lastPortLabel = '–';
 let logCounter = 0;
 const MAX_LOGS = 600;
+const LIVE_HISTORY_CAP = 120;
+const RECORDING_CAP = 1500;
+const MAX_RECONNECT_ATTEMPTS = 3;
+
+// ── Einstellungs-Persistenz (localStorage, SSR-sicher) ──
+const SETTINGS_KEY = 'qflash21.settings.v1';
+
+interface StoredSettings {
+  baudRate?: number;
+  vehicle?: string;
+  autoReconnect?: boolean;
+}
+
+function loadSettings(): StoredSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? (JSON.parse(raw) as StoredSettings) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSettings(patch: StoredSettings): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...loadSettings(), ...patch }));
+  } catch {
+    /* privat/SSR */
+  }
+}
+
+function stopKeepAlive(): void {
+  if (keepAliveTimer) clearInterval(keepAliveTimer);
+  keepAliveTimer = null;
+  keepAliveFailures = 0;
+}
+
+/**
+ * KWP2000-TesterPresent (0x3E): hält die Diagnose-Session am Leben
+ * (ECU baut ohne Traffic nach ~5 s ab). Zwei Ausfälle hintereinander
+ * = Session verloren → Disconnect + optional Auto-Reconnect.
+ */
+function startKeepAlive(get: () => FlasherState, set: (p: Partial<FlasherState>) => void): void {
+  stopKeepAlive();
+  keepAliveTimer = setInterval(() => {
+    const st = get();
+    if (!client || st.connection !== 'connected' || st.busy || st.livePolling || st.isMock) return;
+    void (async () => {
+      try {
+        await client!.sendRequest(0x3e, [0x00], { timeoutMs: 1200 });
+        keepAliveFailures = 0;
+      } catch {
+        keepAliveFailures++;
+        // Buffer flushen, damit verspätete Bytes die nächste Anfrage nicht vergiften
+        try {
+          await client!.drainInitAck(120);
+        } catch {
+          /* egal */
+        }
+        if (keepAliveFailures >= 2) {
+          stopKeepAlive();
+          get().stopLivePoll();
+          set({ connection: 'disconnected', portLabel: '–' });
+          get().log('error', 'Session-Timeout: ECU hat die Diagnose-Session abgebaut (0x3E unbeantwortet)');
+          toast.warning('Verbindung verloren', { description: 'Session abgelaufen – Wiederverbindung …' });
+          if (get().autoReconnect && lastPort) {
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(() => void get().reconnect(), 2000);
+          }
+        }
+      }
+    })();
+  }, 3000);
+}
 
 async function reportOperation(
   operation: string,
@@ -163,6 +253,11 @@ export const useFlasher = create<FlasherState>((set, get) => ({
 
   liveFrames: {},
   livePolling: false,
+  liveHistory: {},
+  recording: false,
+  recordedFrames: [],
+
+  autoReconnect: true,
 
   bin: null,
   ecuBin: null,
@@ -173,13 +268,24 @@ export const useFlasher = create<FlasherState>((set, get) => ({
   logs: [],
 
   initSupport: () => {
-    set({ supported: isWebSerialSupported(), android: isAndroid() });
+    const stored = loadSettings();
+    set({
+      supported: isWebSerialSupported(),
+      android: isAndroid(),
+      ...(stored.baudRate ? { baudRate: stored.baudRate } : {}),
+      ...(stored.vehicle ? { vehicle: stored.vehicle } : {}),
+      ...(typeof stored.autoReconnect === 'boolean' ? { autoReconnect: stored.autoReconnect } : {}),
+    });
   },
 
-  setVehicle: (v) => set({ vehicle: v }),
+  setVehicle: (v) => {
+    set({ vehicle: v });
+    saveSettings({ vehicle: v });
+  },
   setBaudRate: (b) => {
     set({ baudRate: b });
     if (client) client.config.baudRate = b;
+    saveSettings({ baudRate: b });
   },
 
   log: (dir, message, hex) =>
@@ -232,14 +338,21 @@ export const useFlasher = create<FlasherState>((set, get) => ({
     const t0 = Date.now();
     try {
       const port = await SerialClient.requestPort();
+      lastPort = port;
+      reconnectAttempts = 0;
       client = new SerialClient();
       client.onLog = (dir, message, bytes) => get().log(dir, message, bytes ? Array.from(bytes).map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' ') : undefined);
       client.onDisconnect = () => {
         if (get().connection !== 'disconnected') {
+          stopKeepAlive();
+          get().stopLivePoll();
           set({ connection: 'disconnected', portLabel: '–', keywords: null });
           get().log('error', 'Adapter getrennt (USB/OTG)');
           toast.warning('Adapter getrennt');
-          get().stopLivePoll();
+          if (get().autoReconnect && lastPort) {
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(() => void get().reconnect(), 2000);
+          }
         }
       };
       client.config.baudRate = get().baudRate;
@@ -258,7 +371,9 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       await client.sendRequest(0x10, Array.from(DDE4.startSessionParams), { timeoutMs: 2500 });
       steps.push('Diagnose-Session gestartet');
       set({ connection: 'connected', initSteps: [...steps] });
-      get().log('ok', `Verbindung hergestellt: ${info.label}`);
+      lastPortLabel = info.label;
+      startKeepAlive(get, set);
+      get().log('ok', `Verbindung hergestellt: ${info.label} · TesterPresent-KeepAlive aktiv`);
       toast.success('Steuergerät verbunden', { description: info.label });
       void reportOperation('CONNECT', 'OK', { port: info, baudRate: get().baudRate, keywords: kw }, Date.now() - t0);
     } catch (e) {
@@ -274,6 +389,13 @@ export const useFlasher = create<FlasherState>((set, get) => ({
 
   disconnect: async () => {
     get().stopLivePoll();
+    stopKeepAlive();
+    lastPort = null;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    reconnectAttempts = 0;
     await client?.close();
     client = null;
     set({
@@ -285,6 +407,7 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       shadowDtcs: [],
       dtcReadAt: null,
       liveFrames: {},
+      recording: false,
       initSteps: [],
       busy: false,
       progress: null,
@@ -380,7 +503,16 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       if (!block) return;
       const values = block.parse(resp.data.slice(1));
       const frame: LiveDataFrame = { timestamp: Date.now(), blockId, values };
-      set((s) => ({ liveFrames: { ...s.liveFrames, [blockId]: frame } }));
+      set((s) => ({
+        liveFrames: { ...s.liveFrames, [blockId]: frame },
+        liveHistory: {
+          ...s.liveHistory,
+          [blockId]: [...(s.liveHistory[blockId] ?? []), frame].slice(-LIVE_HISTORY_CAP),
+        },
+        recordedFrames: s.recording
+          ? [...s.recordedFrames, frame].slice(-RECORDING_CAP)
+          : s.recordedFrames,
+      }));
       const volt = values.find((v) => v.unit === 'V');
       if (volt) set({ lastVoltage: volt.value });
     } catch {
@@ -404,6 +536,83 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       liveTimer = null;
     }
     set({ livePolling: false });
+  },
+
+  startRecording: () => {
+    set({ recording: true });
+    get().log('info', 'Live-Aufzeichnung gestartet');
+  },
+
+  stopRecording: () => {
+    set({ recording: false });
+    get().log('info', `Live-Aufzeichnung gestoppt (${get().recordedFrames.length} Frames)`);
+  },
+
+  clearRecording: () => set({ recordedFrames: [] }),
+
+  setAutoReconnect: (v) => {
+    set({ autoReconnect: v });
+    saveSettings({ autoReconnect: v });
+  },
+
+  /** Wiederverbindung über den zuletzt verwendeten Port (kein neuer requestPort-Dialog). */
+  reconnect: async () => {
+    const st = get();
+    if (!lastPort || st.connection === 'connected' || st.connection === 'connecting') return;
+    if (st.isMock) return;
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      toast.error('Automatische Wiederverbindung aufgegeben', {
+        description: 'Adapter prüfen und manuell neu verbinden.',
+      });
+      return;
+    }
+    reconnectAttempts++;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    set({ connection: 'connecting', initSteps: [], keywords: null });
+    get().log('info', `Automatische Wiederverbindung (Versuch ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}) …`);
+    try {
+      client = new SerialClient();
+      client.onLog = (dir, message, bytes) => get().log(dir, message, bytes ? Array.from(bytes).map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' ') : undefined);
+      client.onDisconnect = () => {
+        if (get().connection !== 'disconnected') {
+          stopKeepAlive();
+          get().stopLivePoll();
+          set({ connection: 'disconnected', portLabel: '–', keywords: null });
+          if (get().autoReconnect && lastPort) {
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(() => void get().reconnect(), 2500);
+          }
+        }
+      };
+      client.config.baudRate = get().baudRate;
+      await client.connect(lastPort);
+      set({ connection: 'initializing', portLabel: lastPortLabel, initSteps: [] });
+      const kw = await client.fiveBaudInit(DDE4.ecuAddress);
+      await client.sendKeywordComplement(kw[0], kw[1]);
+      await client.drainInitAck(600);
+      await client.sendRequest(0x10, Array.from(DDE4.startSessionParams), { timeoutMs: 2500 });
+      set({
+        connection: 'connected',
+        keywords: kw,
+        initSteps: [`Automatisch wiederverbunden: ${lastPortLabel}`, `Schlüsselwörter 0x${kw[0].toString(16).toUpperCase()} 0x${kw[1].toString(16).toUpperCase()}`],
+      });
+      startKeepAlive(get, set);
+      reconnectAttempts = 0;
+      get().log('ok', 'Wiederverbindung erfolgreich – Session wiederhergestellt');
+      toast.success('Wiederverbunden', { description: lastPortLabel });
+    } catch (e) {
+      await client?.close();
+      client = null;
+      set({ connection: 'error', portLabel: '–' });
+      get().log('error', `Wiederverbindung fehlgeschlagen: ${errMessage(e)}`);
+      if (get().autoReconnect && lastPort) {
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(() => void get().reconnect(), 3000);
+      }
+    }
   },
 
   loadBinFile: async (file) => {

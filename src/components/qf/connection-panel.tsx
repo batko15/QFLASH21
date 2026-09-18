@@ -16,6 +16,7 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import {
   Card,
   CardContent,
@@ -42,6 +43,8 @@ export function ConnectionPanel() {
   const connectReal = useFlasher((s) => s.connectReal);
   const disconnect = useFlasher((s) => s.disconnect);
   const setBaudRate = useFlasher((s) => s.setBaudRate);
+  const autoReconnect = useFlasher((s) => s.autoReconnect);
+  const setAutoReconnect = useFlasher((s) => s.setAutoReconnect);
   const initSupport = useFlasher((s) => s.initSupport);
   const readIdent = useFlasher((s) => s.readIdent);
 
@@ -252,6 +255,19 @@ export function ConnectionPanel() {
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Quelle</span>
               <Badge variant="outline">{isMock ? 'Simulator' : 'Echte Hardware'}</Badge>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-2.5">
+              <div className="min-w-0">
+                <p className="font-medium">KeepAlive & Auto-Reconnect</p>
+                <p className="text-xs text-muted-foreground">
+                  TesterPresent (0x3E) alle 3 s hält die Session wach; bei Verlust max. 3 Wiederverbindungsversuche.
+                </p>
+              </div>
+              <Switch
+                checked={autoReconnect}
+                onCheckedChange={setAutoReconnect}
+                aria-label="KeepAlive und automatische Wiederverbindung umschalten"
+              />
             </div>
           </CardContent>
         </Card>

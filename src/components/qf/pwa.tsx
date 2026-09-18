@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { toast } from 'sonner';
 import { Download, CheckCircle2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -10,14 +11,35 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-/** Registriert den Service Worker (Offline-Fähigkeit). Rendert nichts sichtbares. */
+/** Registriert den Service Worker (Offline-Fähigkeit) + Update-Hinweis. Rendert nichts sichtbares. */
 export function SwRegister() {
   useEffect(() => {
+    // SW nur in Produktion: im Dev-Modus würde der Cache-first-Asset-Cache
+    // Hot-Reload/HMR-Module einfrieren (Stale-Code-Debugging-Falle).
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    if (process.env.NODE_ENV !== 'production') return;
     const onLoad = () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => {
-        /* SW optional – App läuft auch ohne */
-      });
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then((reg) => {
+          // Update-Erkennung: neue SW installiert → Nutzer informieren
+          reg.addEventListener('updatefound', () => {
+            const installing = reg.installing;
+            if (!installing) return;
+            installing.addEventListener('statechange', () => {
+              if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                toast.info('Update verfügbar', {
+                  description: 'Eine neue QFLASH21-Version ist geladen.',
+                  action: { label: 'Neu laden', onClick: () => window.location.reload() },
+                  duration: 12000,
+                });
+              }
+            });
+          });
+        })
+        .catch(() => {
+          /* SW optional – App läuft auch ohne */
+        });
     };
     if (document.readyState === 'complete') onLoad();
     else window.addEventListener('load', onLoad);

@@ -34,6 +34,11 @@ export const IDENT_SERVICES: { id: number; label: string; key: keyof EcuIdent }[
 /** Bekannte EDC15/DDE4-Fehlernummern (dezimal, VAG/EDC-Stil) */
 export const DTC_TABLE: Record<number, string> = {
   5: 'Glühkerze Zylinder 1 – elektrischer Fehler',
+  6: 'Glühkerze Zylinder 2 – elektrischer Fehler',
+  7: 'Glühkerze Zylinder 3 – elektrischer Fehler',
+  8: 'Glühkerze Zylinder 4 – elektrischer Fehler',
+  9: 'Glühkerze Zylinder 5 – elektrischer Fehler',
+  10: 'Glühkerze Zylinder 6 – elektrischer Fehler',
   25: 'Luftmassenmesser – Signal unplausibel',
   64: 'Laderdruckregelung – Regelgrenze erreicht',
   87: 'AGR-Ventil – mechanischer Fehler',
@@ -62,6 +67,8 @@ export const DTC_TABLE: Record<number, string> = {
   17949: 'Ventil Kraftstoffdruckregelung – Kurzschluss nach Masse',
   17964: 'Ladedruckregelung – Regelgrenze unterschritten',
   17965: 'Ladedruckregelung – Überschussdruck',
+  17966: 'Ladedruckregelventil (N75) – elektrischer Fehler',
+  17967: 'Ladedrucksensor – Signal unplausibel',
   19560: 'Magnetventil 1 Einspritzbeginn – Kurzschluss nach Plus',
 };
 
@@ -123,7 +130,7 @@ export const LIVE_BLOCKS: LiveBlock[] = [
       { label: 'Motordrehzahl', value: ((d[0] << 8) | d[1]) * 0.25, unit: '1/min', decimals: 0 },
       { label: 'Kühlmitteltemperatur', value: d[2] - 48, unit: '°C', decimals: 0 },
       { label: 'Ansauglufttemperatur', value: d[3] - 48, unit: '°C', decimals: 0 },
-      { label: 'Ladedruck (IST)', value: (d[4] << 8 | d[5]) * 10, unit: 'mbar', decimals: 0 },
+      { label: 'Ladedruck (IST)', value: (d[4] << 8) | d[5], unit: 'mbar', decimals: 0 }, // absolut, 1 LSB = 1 mbar
     ],
   },
   {
