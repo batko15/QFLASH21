@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, hasDatabase } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
-  if (!process.env.DATABASE_URL) {
+  if (!hasDatabase()) {
     return NextResponse.json(
       { error: 'Datenbank nicht konfiguriert (DATABASE_URL fehlt)', degraded: true },
       { status: 503 }
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!process.env.DATABASE_URL) {
+  if (!hasDatabase()) {
     return NextResponse.json(
       { error: 'Datenbank nicht konfiguriert (DATABASE_URL fehlt)', degraded: true, logs: [], stats: [] },
       { status: 503 }
