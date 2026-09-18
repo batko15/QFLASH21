@@ -41,3 +41,36 @@ Bekannte Restpunkte:
 - Nächste sinnvolle Schritte: CAL-Vergleich zweier BINs als Visu, Kennfeld-Editor, BIN-Diff-Viewer mit Hex, Auto-Reconnect, WebUSB-Fallback.
 
 ---
+Task ID: 2
+Agent: Z.ai Code (Hauptagent)
+Task: Android-Direktnutzung (PWA) einrichten + GitHub-Repo erstellen (batko15/QFLASH21)
+
+Work Log:
+- Recherche (web-search): Web Serial API ist auf Android-Chrome seit Version 138 NATIV verfügbar (caniuse + chromestatus bestätigt). Kein WebUSB-Fallback nötig – Honor Magic Pro 8 mit aktuellem Chrome erfüllt das.
+- PWA-Setup:
+  - `public/manifest.json`: name/short_name, standalone, theme #18181b, lang de, Maskable-Icons, Shortcuts (/?tab=verbindung, /?tab=fehlerspeicher)
+  - App-Icon per KI generiert (`public/icon-source.png`, 1024²), via `scripts/make-icons.mjs` (sharp) zu 192/512/maskable/apple-touch-180/favicon-32 verarbeitet
+  - `public/sw.js` Service Worker v1: Precache-Shell, Network-First für Navigationen (Offline-Fallback /), Cache-First für /_next/static + Icons, /api/ NIEMALS gecacht
+  - `layout.tsx`: metadata.manifest, icons (32/192/512/apple), appleWebApp (capable, black-translucent), viewportFit cover (Safe-Areas)
+- `src/components/qf/pwa.tsx`: SwRegister (SW-Registrierung) + InstallPwaButton (beforeinstallprompt, Standalone-Erkennung über matchMedia + useSyncExternalStore – lint-sauber)
+- `qf-app.tsx`: InstallButton im Header, ?tab=-Deeplinks hydration-sicher via useSyncExternalStore (kein setState-in-Effect)
+- 2× ESLint-Fehler (react-hooks/set-state-in-effect) behoben: Tab-Deeplink + Install-Button auf useSyncExternalStore-Muster umgestellt
+- Connection-Panel: Browser-Hinweise aktualisiert („Android: Chrome ≥ 138, Desktop: Chrome/Edge ≥ 89, HTTPS nötig“)
+- GitHub: Repo batko15/QFLASH21 (public) via API erstellt; Commit f9c5feb (PWA) + c5d86fe (Cleanup) gepusht
+- Repo-Bereinigung: .env, skills/, download/, tsconfig.tsbuildinfo aus Git entfernt (waren im Vorgänger-Commit getrackt); .env.example ergänzt; Token aus git remote config entfernt (Push nur einmalig in URL)
+- Hinweis: .env (nur lokale SQLite DATABASE_URL, kein echtes Secret) verbleibt in Git-Historie von Commit 6f7beec – falls relevant, History-Rewrite + Force-Push nötig
+
+Stage Summary:
+- **Android-Direktnutzung steht**: App ist jetzt als PWA installierbar (Chrome → „App installieren“ → Icon auf Homescreen, Vollbild ohne Browser-Leiste). Offline nutzbar (Service Worker). Web Serial funktioniert nativ ab Android-Chrome 138.
+- Browser-Verifikation (agent-browser, 390×844): Rendering fehlerfrei, 0 Konsolen-/Hydrationsfehler, Manifest+SW aktiv (Scope /), ?tab=-Deeplinks springen korrekt, Footer exakt am Dokumentende, kein Horizontal-Scroll.
+- Kein Regression: Golden Path Simulator → Verbindung → Ident (DDE4.0) → DTC-Lesen (2 normal + 1 Schatten) E2E bestätigt.
+- Lint: 0 Fehler/0 Warnungen. tsc: sauber.
+- Repo: https://github.com/batko15/QFLASH21 (main, sauber ohne Secrets)
+
+Nächste Schritte (Priorität):
+1. Nutzer-Anleitung im Übersicht-Tab: „Auf Android installieren“-Karte mit 3 Schritten
+2. GitHub Pages / permanente URL für Handy-Zugriff (statischer Export ohne API → localStorage-Fallback für Logs)
+3. WebUSB-FTDI-Fallback für Chrome < 138 (ältere Handys)
+4. Realtest am Fahrzeug: 5-Baud-Init → Ident → DTC mit K+DCAN-Kabel am Honor
+
+---
