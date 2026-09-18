@@ -33,21 +33,31 @@ import {
 import { useFlasher, VEHICLES } from '@/store/flasher';
 import type { DtcEntry } from '@/lib/kwp/types';
 
-function exportTxt(normal: DtcEntry[], shadow: DtcEntry[], vehicle: string): string {
+function exportTxt(
+  normal: DtcEntry[],
+  shadow: DtcEntry[],
+  vehicle: string,
+  ident: { ecuType: string; partNumber: string; softwareVersion: string } | null
+): string {
   const lines: string[] = [
     'QFLASH21 – Fehlerspeicher-Bericht',
     `Fahrzeug: BMW ${VEHICLES.find((v) => v.id === vehicle)?.label ?? vehicle}`,
+    `Steuergerät: ${ident ? `${ident.ecuType} · Teile-Nr. ${ident.partNumber} · SW ${ident.softwareVersion}` : 'nicht identifiziert'}`,
     `Datum: ${new Date().toLocaleString('de-DE')}`,
     '',
     `--- Fehlerspeicher (normal): ${normal.length} Einträge ---`,
     ...normal.map(
-      (d) => `${d.code} | ${d.description} | Status 0x${d.status.toString(16).padStart(2, '0')} (${d.statusText})${d.sporadic ? ' | sporadisch' : ''}`
+      (d) => `${d.code} | ${d.description} | Priorität: ${d.priority} | Status 0x${d.status.toString(16).padStart(2, '0')} (${d.statusText})${d.sporadic ? ' | sporadisch' : ''}`
     ),
+    normal.length === 0 ? '(keine Einträge)' : '',
     '',
     `--- Schattenspeicher: ${shadow.length} Einträge ---`,
-    ...shadow.map((d) => `${d.code} | ${d.description} | Status 0x${d.status.toString(16).padStart(2, '0')} (${d.statusText})`),
+    ...shadow.map((d) => `${d.code} | ${d.description} | Priorität: ${d.priority} | Status 0x${d.status.toString(16).padStart(2, '0')} (${d.statusText})`),
+    shadow.length === 0 ? '(keine Einträge)' : '',
+    '',
+    'Hinweis: Schattenspeicher-Einträge sind historisch (bereits korrigierte Fehler).',
   ];
-  return lines.join('\n');
+  return lines.filter((l) => l !== undefined).join('\n');
 }
 
 export function DtcPanel() {
@@ -101,7 +111,7 @@ export function DtcPanel() {
   }
 
   function handleExport() {
-    const blob = new Blob([exportTxt(dtcs, shadowDtcs, vehicle)], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([exportTxt(dtcs, shadowDtcs, vehicle, ident)], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

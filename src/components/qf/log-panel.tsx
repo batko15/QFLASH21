@@ -1,7 +1,25 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Terminal, Trash2, Copy, ArrowDown, History, RefreshCw, Database } from 'lucide-react';
+import {
+  Terminal,
+  Trash2,
+  Copy,
+  ArrowDown,
+  History,
+  RefreshCw,
+  Database,
+  Plug,
+  Fingerprint,
+  ScanSearch,
+  Eraser,
+  HardDriveDownload,
+  HardDriveUpload,
+  Wrench,
+  RotateCcw,
+  FileText,
+  CircleAlert,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +28,44 @@ import { useFlasher } from '@/store/flasher';
 import { fetchOperationLogSupabase, type OperationLogEntry } from '@/lib/supabase-log';
 import type { LogDir } from '@/lib/kwp/types';
 import { cn } from '@/lib/utils';
+
+/** Deutsche Klarnamen + Icons für die Operationshistorie (Datenbank-Operationen). */
+const OPERATION_META: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
+  CONNECT: { label: 'Verbindung', icon: Plug },
+  READ_IDENT: { label: 'Identifikation', icon: Fingerprint },
+  READ_DTC: { label: 'Fehlerspeicher lesen', icon: ScanSearch },
+  CLEAR_DTC: { label: 'Fehlerspeicher gelöscht', icon: Eraser },
+  READ_FLASH: { label: 'Flash gelesen', icon: HardDriveDownload },
+  WRITE_FLASH: { label: 'Flash geschrieben', icon: HardDriveUpload },
+  ERASE_FLASH: { label: 'Flash gelöscht', icon: Trash2 },
+  JOB_ECU_RESET: { label: 'Steuergerät-Reset', icon: RotateCcw },
+  JOB_OUTPUT: { label: 'Aktuatorik-Test', icon: Wrench },
+  JOB_ROUTINE: { label: 'Routine', icon: Wrench },
+  JOB_READ: { label: 'Info-Auslesung', icon: FileText },
+};
+
+/** Kurzbeschreibung aus den JSON-Details der Operation. */
+function describeDetails(operation: string, raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const d = JSON.parse(raw) as Record<string, unknown>;
+    if (operation === 'CLEAR_DTC' && typeof d.cleared === 'number') {
+      return `${d.cleared} Einträge entfernt (normal: ${d.normal ?? 0}, Schatten: ${d.shadow ?? 0})`;
+    }
+    if (operation === 'READ_DTC') {
+      const n = d.normal ?? d.cleared;
+      if (typeof n === 'number') return `Normal: ${n} · Schatten: ${d.shadow ?? 0}`;
+    }
+    if (operation === 'CONNECT' && typeof d.port === 'string') return `Port: ${d.port}`;
+    if (operation === 'READ_IDENT' && typeof d.ecuType === 'string') return d.ecuType;
+    if (operation === 'READ_FLASH') return `${d.size ?? '?'} Bytes gelesen`;
+    if (operation === 'WRITE_FLASH') return `${d.size ?? '?'} Bytes · ${d.label ?? 'Image'}`;
+    if (typeof d.job === 'string') return `Job: ${d.job}`;
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 const DIR_STYLE: Record<LogDir, { label: string; cls: string }> = {
   tx: { label: 'TX', cls: 'bg-primary/15 text-primary' },
@@ -198,21 +254,34 @@ export function LogPanel() {
               </p>
             ) : (
               <ul className="divide-y divide-border/40 text-xs">
-                {history.map((h) => (
-                  <li key={h.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1.5">
-                    <Badge variant={h.status === 'ERROR' ? 'destructive' : 'success'} className="px-1.5 py-0 text-[10px]">
-                      {h.status}
-                    </Badge>
-                    <span className="font-medium">{h.operation}</span>
-                    {h.vehicle && <span className="text-muted-foreground">· {h.vehicle}</span>}
-                    {typeof h.durationMs === 'number' && (
-                      <span className="text-muted-foreground">· {h.durationMs} ms</span>
-                    )}
-                    <span className="ml-auto text-[10px] text-muted-foreground">
-                      {new Date(h.createdAt).toLocaleString('de-DE', { hour12: false })}
-                    </span>
-                  </li>
-                ))}
+                {history.map((h) => {
+                  const meta = OPERATION_META[h.operation];
+                  const OpIcon = meta?.icon ?? CircleAlert;
+                  const detail = describeDetails(h.operation, h.details);
+                  return (
+                    <li key={h.id} className="py-1.5">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <Badge variant={h.status === 'ERROR' ? 'destructive' : 'success'} className="px-1.5 py-0 text-[10px]">
+                          {h.status}
+                        </Badge>
+                        <OpIcon className={cn('h-3.5 w-3.5', h.operation === 'CLEAR_DTC' ? 'text-warning' : 'text-muted-foreground')} aria-hidden />
+                        <span className={cn('font-medium', h.operation === 'CLEAR_DTC' && 'text-warning')}>
+                          {meta?.label ?? h.operation}
+                        </span>
+                        {h.vehicle && <span className="text-muted-foreground">· {h.vehicle}</span>}
+                        {typeof h.durationMs === 'number' && (
+                          <span className="text-muted-foreground">· {h.durationMs} ms</span>
+                        )}
+                        <span className="ml-auto text-[10px] text-muted-foreground">
+                          {new Date(h.createdAt).toLocaleString('de-DE', { hour12: false })}
+                        </span>
+                      </div>
+                      {detail && (
+                        <p className="mt-0.5 pl-[4.75rem] text-[10px] text-muted-foreground">{detail}</p>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

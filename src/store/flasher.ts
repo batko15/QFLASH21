@@ -579,10 +579,19 @@ export const useFlasher = create<FlasherState>((set, get) => ({
     try {
       await client.sendRequest(0x14, [0xff, 0x00], { timeoutMs: 3000 });
       await client.sendRequest(0x14, [0xfd, 0x00], { timeoutMs: 3000 });
+      const clearedNormal = get().dtcs.length;
+      const clearedShadow = get().shadowDtcs.length;
       set({ dtcs: [], shadowDtcs: [], dtcReadAt: Date.now() });
       get().log('ok', 'Fehlerspeicher gelöscht (normal + Schatten)');
-      toast.success('Fehlerspeicher gelöscht');
-      void reportOperation('CLEAR_DTC', 'OK', {}, Date.now() - t0);
+      toast.success('Fehlerspeicher gelöscht', {
+        description: `${clearedNormal} normal · ${clearedShadow} Schatten`,
+      });
+      void reportOperation(
+        'CLEAR_DTC',
+        'OK',
+        { normal: clearedNormal, shadow: clearedShadow, cleared: clearedNormal + clearedShadow },
+        Date.now() - t0
+      );
     } catch (e) {
       get().log('error', `Löschen fehlgeschlagen: ${errMessage(e)}`);
       toast.error('Löschen fehlgeschlagen', { description: errMessage(e) });
