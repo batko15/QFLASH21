@@ -482,3 +482,4 @@ Work Log:
 Stage Summary:
 - Die App kann jetzt nichts mehr VERSCHWEIGEN: Was immer auf dem Gerät schiefläuft – der nächste Screenshot zeigt die native Statusleiste mit WebView-Version + Phase + Fehler, und die App unternimmt eigenständig 3 Reparaturversuche in technisch völlig verschiedenen Lademodi (Netz-Interception → Software-Renderer → Dateisystem).
 - Anwenderanleitung: v2.3.0 installieren → Statusleiste beobachten → wenn ein Fehlerbericht erscheint: „Bericht kopieren" → hier einfügen.
+- **DISTRIBUTION ABGESCHLOSSEN:** Push 819b9a8 → main; Release v2.3.0 (ID 391674107) mit APK (9.263.530 B, uploaded); Produktion verifiziert (APK HTTP 200 exakt 9.263.530 B, Web-UI zeigt v2.3.0). Token-Remote entfernt.
