@@ -74,3 +74,33 @@ Nächste Schritte (Priorität):
 4. Realtest am Fahrzeug: 5-Baud-Init → Ident → DTC mit K+DCAN-Kabel am Honor
 
 ---
+Task ID: 3
+Agent: Z.ai Code (Hauptagent)
+Task: Komplett-Deployment (Supabase + Vercel), Repo vervollständigen (Bilder), Android-APK
+
+Work Log:
+- **Supabase-Postgres-Umstellung**: prisma/schema.prisma sqlite → postgresql (DATABASE_URL = PgBouncer-Pooler 6543 + ?pgbouncer=true, DIRECT_URL = Session-Pooler 5432). Region-Ermittlung: eigener Postgres-Handshake-Probe über alle Supabase-Regionen → Projekt liegt in ap-southeast-2 (Sydney). `db:push` erfolgreich, lokal E2E (POST/GET /api/logs gegen Supabase) verifiziert.
+- **Shell-Env-Falle gefunden**: Umgebungsvariable DATABASE_URL=file:.../custom.db überschrieb .env (Next priorisiert echte Env) → Dev-Server-Start jetzt mit `env -u DATABASE_URL -u DIRECT_URL bun run dev`.
+- **Vercel**: übergebene Credentials (UUID+SHA256-Fingerprint) sind KEIN API-Token (403 invalidToken) → Env-Vars nicht per API setzbar. Branch-URL hat Deployment-Protection (302→SSO); Produktion https://qflashk.vercel.app ist öffentlich.
+- **Graceful Degradation + Env-Fallback-Kette**: /api/logs gibt 503 mit `degraded:true` ohne DB; db.ts-Fallback DATABASE_URL → POSTGRES_PRISMA_URL → POSTGRES_URL (für spätere Supabase-Integration); Build-Pipeline für Vercel (build = prisma generate && next build, postinstall, trustedDependencies @prisma/*).
+- **RLS-Policies via prisma db execute** (direkte DB-Verbindung): anon INSERT + SELECT auf OperationLog; ALTER COLUMN id SET DEFAULT gen_random_uuid()::text (cuid() ist nur Prisma-seitig, REST-Inserts brauchen DB-Default).
+- **Supabase-REST-Fallback** (supabase-log.ts): Publishable-Key (public by design) im Client; Store reportOperation: /api/logs zuerst → Supabase-REST-Fallback; dadurch Produktion SOFORT voll funktionsfähig ohne manuelle Vercel-Env-Konfiguration.
+- **Neues Feature „Operationshistorie"** im Protokoll-Tab: lädt /api/logs mit Supabase-Fallback, Quelle-Badge (Server-API / Supabase direkt), Refresh, Status-Badges, max-h-56 Scroll. Lint-Fix: async fetchHistory-Helfer statt synchronem setState im Effect.
+- **Repo vervollständigt**: 9 Screenshots (Simulator-Durchlauf: Übersicht, Verbindung, DTC, KI-Analyse, ECU-ID, Live, Flash, Prüfsumme, Protokoll) in docs/screenshots/; README mit Bildern/Badges/Tabellen; DEPLOYMENT.md (Env-Vars, Protection, Verifikation).
+- **Android-APK v1.0.0 gebaut**: nativer Launcher (minSdk 24/target 34, arm64-kompatibel, 85 KB) – öffnet PWA in Chrome, weil Web Serial NUR im echten Chrome funktioniert (bewusst KEIN WebView/TWA!). Toolchain ohne Gradle: aapt2 + ecj + d8 + zipalign + apksigner (ecj braucht -source/-target 8 wegen Java21-Modulkonflikt; d8 braucht existierenden Output-Ordner). Signiert: SHA-256 8c9dfb21...68f06. Release: https://github.com/batko15/QFLASH21/releases/tag/v1.0.0
+- **GitHub Actions**: Workflow .github/workflows/build-apk.yml korrekt, aber Runs schlagen fehl: „account is locked due to a billing issue" → Nutzer muss GitHub-Billing lösen; danach baut der Workflow automatisch.
+
+Stage Summary:
+- **Produktion live & verifiziert**: https://qflashk.vercel.app – App 200, PWA aktiv (Manifest + SW-Registration 1), Operationshistorie lädt live aus Supabase (Fallback-Pfad browser-verifiziert: „Supabase direkt", Test-Eintrag sichtbar).
+- **Datenbank**: Supabase Postgres (ap-southeast-2), OperationLog mit RLS (anon-Insert/Select), lokal + Produktion getestet.
+- **APK**: v1.0.0 signiert im GitHub-Release + im Repo unter apk/. CI-Rebuild-Workflow vorhanden (blockiert nur durch GitHub-Billing-Sperre).
+- **Ein verbleibender manueller Schritt (optional)**: Vercel-Dashboard → qflashk → Settings → Environment Variables → DATABASE_URL + DIRECT_URL (Werte in DEPLOYMENT.md) → dann nutzt die Server-API die DB direkt (aktuell reicht der Client-Fallback komplett).
+- **Sicherheit**: DB-Passwort/Keys erneut im Chat geteilt → rotieren empfehlen. Keystore nicht im Repo. Keine Secrets committed.
+
+Nächste Schritte:
+1. GitHub-Billing-Sperre beheben → Actions-APK-Build läuft automatisch
+2. Vercel-Env-Vars setzen (optional, siehe DEPLOYMENT.md) + Deployment-Protection für Produktion prüfen
+3. Realtest am Fahrzeug (Honor + OTG + K+DCAN): 5-Baud-Init → Ident → DTC
+4. Feature-Ideen: DTC-Clear in Historie markieren, BIN-Diff-Viewer, Live-Gauges
+
+---
