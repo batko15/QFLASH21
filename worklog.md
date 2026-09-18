@@ -431,3 +431,18 @@ Nächste Schritte:
 2. Realtest am Fahrzeug: v2.1.0 installieren → Flugmodus → App startet offline → K+DCAN per OTG → 5-Baud-Init
 3. Falls Fehler: nativer Fehlerbericht („Fehler kopieren") hier einfügen
 4. DTC-Discovery (NickTullos, 23 EDC15C4-Dumps) + MWB-Live-Renderer
+---
+Task ID: 14
+Agent: Z.ai Code (Hauptagent)
+Task: Token erhalten → Push + Release v2.1.0 + Produktionsverifikation (Abschluss Task 13)
+
+Work Log:
+- Nutzer lieferte GitHub-PAT → sofort verarbeitet: `git remote add origin` (One-Shot-Token-URL) → **Push 705be72..e1c77a8 → main** (v2.1.0-Standalone-Commit + worklog).
+- **GitHub Release v2.1.0 erstellt** (ID 391613936): Titel „QFLASH21 v2.1.0 – Standalone (100 % offline)", deutsche Release-Notes (Was ist neu, 4-Schritt-Installation, ASCII-Architekturdiagramm, Technik-Tabelle, Crash-Bericht-Hinweis). APK-Asset hochgeladen: QFLASH21-v2.1.0.apk, 9.255.338 B, state=uploaded.
+- **Token-Hygiene**: Remote sofort nach Push entfernt (`git remote remove origin`), Repo-Scan: Token in 0 Dateien (nur in git-Reflog-URL-Referenz des entferntten Remotes, nicht im Tree/History).
+- **Produktionsverifikation** (Vercel auto-deploy nach ~90 s): 1) https://qflashk.vercel.app/apk/QFLASH21-v2.1.0.apk → HTTP 200 mit exakt 9.255.338 Bytes; 2) Homepage rendert v2.1.0 (eval-Check); 3) System-Check-Tab via agent-browser geöffnet: Verdict „Bereit für K+DCAN per USB-OTG", alle Prüfungen OK (Web Serial Chrome 153, USB-Serial nativ, WebUSB-Fallback, HTTPS, Bluetooth), APK-Karte „Android-App (Standalone) v2.1.0 – …100 % offline, kein Chrome, kein Internet…" + Download-Link „APK v2.1.0 herunterladen (Standalone, ~9 MB)"; 4) Footer „v2.1.0 · Standalone-Android-App". Screenshot /tmp/qf-systemcheck-210-prod.png.
+- APK-Signatur nochmals lokal verifiziert: apksigner → SHA-256 6c62fd…ca7e (identisch zu v1.3.x/v2.0.0 → Upgrade ohne Deinstallation).
+
+Stage Summary:
+- **Pipeline vollständig geschlossen**: Code (e81510a) → GitHub → Release v2.1.0 mit APK → Vercel-Produktion → alle drei Download-Kanäle live (Website /apk/, GitHub Release, GitHub-hauptsache). Standalone-App v2.1.0 ist ab jetzt die empfohlene Distribution.
+- Kein offenes Token-abhängiges To-do mehr. Nächste inhaltliche Schritte siehe Task 13 „Nächste Schritte" (Realtest am Fahrzeug, DTC-Discovery, MWB-Renderer).
