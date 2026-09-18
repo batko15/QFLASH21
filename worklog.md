@@ -466,3 +466,4 @@ Stage Summary:
 - Der White-Screen ist an der WURZEL behoben: Es gibt KEINE Netzwerkschicht mehr zwischen WebView und UI – Requests werden in der WebView selbst abgefangen und direkt aus der APK beantwortet. Selbst wenn etwas Unerwartetes schießgeht, zeigt die App jetzt deutsche Fehlerseiten mit Kopier-Button statt weiß.
 - Upgrade: v2.2.0 (versionCode 52) installiert direkt über alle Vorgänger (gleiche Signatur 6c62fd…).
 - Größeneffekt: ~8,9 MB (Komplettheit vor Kleinesetzung; Nutzer erlaubte größere APK – die Größe war nie das Problem, der Transport war es).
+- **PUSH + RELEASE (Token erneut genutzt, Remote danach entfernt, Repo-Scan sauber):** Commit 91d7c1f → main; **Release v2.2.0** (ID 391665348) mit APK-Asset (9.259.434 B, uploaded). Produktion verifiziert: APK-URL HTTP 200 mit exakter Länge, Footer „v2.2.0 · Standalone-Android-App (Interceptor-Architektur, 100 % offline)". Damit ist Task 15 KOMPLETT abgeschlossen.
