@@ -163,3 +163,27 @@ Nächste Schritte / Hinweise:
 3. Vercel-Env-Vars (DATABASE_URL/DIRECT_URL) optional setzen – Details in DEPLOYMENT.md.
 4. Fahrzeug-Realtest: Aktuatorik-Jobs erst mit geprüfter Referenz am echten EDC15C4 freischalten.
 5. Sicherheit: Im Chat geteilte Tokens/Passwörter rotieren (GitHub PAT, Supabase-DB-Passwort, neu: APK-Keystore-Passwort qflash-2025 lokal notieren).
+
+---
+Task ID: 6
+Agent: Z.ai Code (Hauptagent)
+Task: DeepOBD-Datei-Upload empfangen/analysieren + QA-Runde + Verbesserungen
+
+Work Log:
+- **DeepOBD.rar/zip IMMER NOCH NICHT ANGEKOMMEN** (2. Upload-Versuch des Nutzers): upload/ leer, dateisystemweit kein Treffer (find über / , /home/z, /tmp). Watcher-Skript /tmp/watch-deepobd.sh (setsid, 10-min-Polling) entpackt automatisch nach /home/z/my-project/tools/deepobd-extracted/ sobald die Datei auftaucht; Status in /tmp/deepobd-status.txt. unrar + unzip vorhanden. → Nutzer muss Datei erneut hochladen (möglicher Upload-Pipeline-Fehler).
+- QA (agent-browser, lokal): frischer Seitenaufruf 0 Hydration-/Konsolenfehler; die vielen Hydration-Mismatches im dev.log waren HMR-/stale-HTML-Rauschen während Code-Edits, KEIN aktueller Bug. Golden Path E2E: Simulator → Ident (DDE4.0 EDC15C4-6-BMW SW V41 7759) → DTC (3 Einträge) → Live-Polling (1069 mbar, 66 °C) → Glühkerzen-Routine OK (12,13,12,14,12,13).
+- **Feature: Operationshistorie ausgebaut** (Worklog-Idee aus Task 4 „DTC-Clear in Historie markieren"):
+  - log-panel.tsx: OPERATION_META-Tabelle (deutsches Label + Icon je Operation: Verbindung, Identifikation, Fehlerspeicher lesen/gelöscht, Flash gelesen/geschrieben/gelöscht, Steuergerät-Reset, Aktuatorik/Routine, Info-Auslesung); describeDetails() rendert Kurzbeschreibung aus JSON-Details (z. B. „3 Einträge entfernt (normal: 2, Schatten: 1)", „Port: …", „512 KiB gelesen"); CLEAR_DTC-Einträge farblich hervorgehoben (text-warning + Eraser-Icon).
+  - flasher.ts clearDtc: meldet jetzt { normal, shadow, cleared } in Details; Toast zeigt Anzahl.
+  - dtc-panel.tsx exportTxt: Bericht enthält jetzt Steuergerät-Ident (ECU-Typ, Teile-Nr., SW-Stand), Priorität je Fehler, explizite Leerfelder, Schatten-Hinweis.
+- E2E-Verifikation lokal: Simulator → DTC lesen → löschen → Historie zeigt „Fehlerspeicher gelöscht · 241 ms · 3 Einträge entfernt (normal: 2, Schatten: 1)" ✅
+- Lint 0/0, tsc sauber. Commit 244a53b gepusht; Vercel auto-deploy (Produktion 200, Manifest 200, 0 Konsolenfehler).
+
+Stage Summary:
+- App stabil & getestet; Operationshistorie jetzt Werkstatt-tauglich (Klarnamen, Details, Lösch-Markierung).
+- **BLOCKER für DeepOBD-Integration: Datei ist nach 2 Upload-Versuchen nicht auf dem Server angekommen** — bitte erneut hochladen; Watcher läuft und verarbeitet sie automatisch.
+
+Nächste Schritte:
+1. DeepOBD-Datei empfangen → Protokoll-/DTC-Daten (DDE4/EDC15C4) extrahieren und integrieren
+2. Fahrzeug-Realtest, GitHub-Billing (Nutzer-Aktionen)
+3. Vercel Env-Vars (optional, siehe DEPLOYMENT.md)
