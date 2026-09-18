@@ -292,3 +292,34 @@ Nächste Schritte:
 2. EDC15C13-Checksum-Algorithmus gegen QFLASH21 checksum.ts differ-testen.
 3. README-Toolbox um ZedSuite/OBD2_K-line_Reader/SchoepsLabs ergänzen; Android-Guide um Chrome-148-Anforderung (USB-Serial) erweitern.
 4. DeepOBD.rar weiterhin nie angekommen – Ersatz jetzt weitgehend obsolet, da öffentliche Repos für DDE4 nichts Mehrwertendes enthalten (SGBD bleibt einziger Weg für Klartexte).
+
+---
+Task ID: 9
+Agent: Z.ai Code (Hauptagent)
+Task: Fortsetzung nach Nutzer-Abbruch: APK-Fix („funktioniert nicht"), WebUSB-Fallback, System-Check, GitHub-Deepweb-Research Runde 2, DeepOBD-Upload-Watcher
+
+Work Log:
+- **APK-Wurzelursache forensisch bestätigt:** v1.0/v1.1 (Cert a2d639…, CN=QFLASH21 Berlin) vs. v1.2.0 (Cert 6c62fd…, CN=QFLASH21 TWA) – gleiche Paket-ID de.qflash21.launcher mit 2 Signaturen → Android-Upgrade-Blockade „App wurde nicht installiert". Altes Keystore-Passwort (qflash21.keystore) nicht rekonstruierbar (8 Kandidaten via keytool geprüft, Git-History/READMEs durchsucht).
+- **Lösung: APK v1.3.0 gebaut** (scripts/build-twa-apk.sh, hand-assembliert) mit **neuer applicationId de.qflash21.app** (versionCode 40) → installiert garantiert neben/über alles. aapt-Verifikation: package/version OK, Signatur 6c62fd…. XML-Kommentar-Fix (fehlendes -->) beim Edit.
+- **assetlinks.json** um de.qflash21.app erweitert (2 Einträge) → Produktion verifiziert (beide Pakete).
+- **WebUSB-Serial-Fallback (Kernfeature):** src/lib/kwp/webusb-serial.ts – QfSerialPort-Adapter für FTDI FT232R/FT231X, CH340/CH341, CP2102. Treiber-Mathematik 1:1 aus Linux-Kernel-Quellen (via curl: ftdi_sio.c ftdi_232bm_baud_base_to_divisor mit divfrac {0,3,2,4,1,5,6,7}; ch341.c ch341_get_divisor ps/fact-Algorithmus + LCR-Register 0x18/0x25 + BREAK-Registerpaar 0x1805; cp210x.c SET_BAUDRATE u32-LE + SET_BREAK 0x16). 10400 Bd: FTDI-Divisor +0,12 %, CH340 +0,16 %. 5-Baud-Init über setSignals({break}) (FTDI SIO_SET_DATA Bit14, CH340 TX-Enable aus, CP210x 0x16). RX-Pump mit 2-Status-Byte-Stripping (FTDI/CH340), Endpoint-Erkennung aus Deskriptoren. tsc 0 Fehler.
+- **Store-Integration:** connectReal mit Pfad-Fallback Web Serial → WebUSB (isWebUsbSupported/requestWebUsbDevice/WebUsbSerialPort/driverLabel); supported = Serial||WebUSB; lastPort-Typ geweitet (QfSerialPort|SerialPort); Reconnect-Kompatibilität geprüft; Port-Label mit '· WebUSB' Zusatz.
+- **System-Check-Tab (neu):** src/components/qf/system-check-panel.tsx – 7 Prüfungen (Web Serial, USB-Serial-nativ-Heuristik Chrome≥148, WebUSB, HTTPS, App-Modus standalone, Plattform/Android-Version, Bluetooth-Serial), Urteils-Banner (4 Zustände), „Erlaubte Geräte prüfen" (serial.getDevices + usb.getDevices), kopierbarer Diagnose-Bericht (Clipboard + sichtbares <pre>), APK-Download v1.3.0 + MagicOS-Install-Guide (Pure Mode). Hydration-sicher via useSyncExternalStore + async scan (keine set-state-in-effect-Verletzung).
+- **qf-app:** Tab 'check' (Stethoscope-Icon) + Mobile-Bottom-Nav 7 Items (grid-cols-7); Jobs-Panel: DeepOBD-Job-Referenz-Card (DEEP_OBD_JOBS + aufklappbare DEEP_OBD_MWB-Formeln aus Task 9-a); Footer v1.3.0; Verbindungstexte WebUSB-aware.
+- **Research Task 9-a (Subagent):** deepobd-knowledge.ts (32 DEEP_OBD_ERROR_RESULTS, 10 DEEP_OBD_JOBS [MS45.1-gelabelt], 30 DEEP_OBD_MWB [d_motor/DDE5-Formeln], DTC-Texte bewusst leer – in keinen öffentlichen Konfigs vorhanden, Zero-Trust). docs/research/github-findings-2.md. **Kritische Fakten: Chrome Android 138–147 = nur Bluetooth-Serial, USB erst ab 148 (MDN BCD); WebView nie** → WebUSB-Fallback ist DER Fix für „funktioniert mit dem Telefon nicht". Top-Funde: ZedSuite (EDC15 Map-Editor), NickTullos/edc15vm-flash-editor (DTC-Discovery aus Dumps → nächste Runde auf 23 Mursteinen-Dumps), LeZed97, SchoepsLabs/webserial-android, muki01/OBD2_K-line_Reader.
+- **Distribution:** public/apk/QFLASH21-v1.3.0.apk (Website-Download 200 ✅), apk/ im Repo, **GitHub Release v1.3.0** (ID 391512180, Asset QFLASH21-v1.3.0.apk ✅), README + apk/README mit Signatur-Chronik-Tabelle; alte v1.2.0-APKs aus public//apk/ entfernt (Git-History behält sie).
+- **DeepOBD-Upload:** 3. Nutzer-Upload (DeepOBD.zip, laut Gateway-Metadaten) erneut NICHT auf dem Dateisystem angekommen; Upload-Ordner leer. Robuster setsid-Watcher (tools/watch-deepobd2.sh, PID 27333) überwacht /upload und extrahiert+inventarisiert automatisch (zip/rar/7z) → /tmp/deepobd-status.txt + tools/deepobd-extracted/.
+- **E2E (agent-browser):** System-Check-Tab: Verdict „Bereit für K+DCAN per USB-OTG", Chrome 153 erkannt, alle Checks OK, Geräte-Scan + Copy-Button („Kopiert!") OK. Golden Path nach Umbau: Simulator → Ident DDE4.0 EDC15C4-6-BMW SW V41 7759 · Teile-Nr. 0 281 011 056 → DTC 3 Einträge (2 normal, 1 Schatten) – 0 Konsolenfehler. Desktop-Screenshot sauber.
+- **Verifikation:** tsc 0 Fehler, lint 0/0. Produktion: APK 200, assetlinks 2 Pakete, Homepage mit System-Check, Release 200. Commit c5a7a10 gepusht.
+
+Stage Summary:
+- „APK funktioniert nicht" an WURZEL behoben (Signaturkonflikt → neue applicationId) UND „funktioniert nicht am Telefon" zusätzlich über WebUSB-Fallback entschärft (USB-Serial unabhängig von Chrome ≥148).
+- Nutzer kann Fehler jetzt SELBST diagnostizieren (System-Check + kopierbarer Bericht) – keine Screenshot-Abhängigkeit mehr.
+- Erwartung an Nutzer: ① APK v1.3.0 installieren (Link: qflashk.vercel.apk /apk/ oder GitHub Release), alte Apps danach löschen, ② System-Check-Tab zeigen (muss grün sein), ③ K+DCAN anschließen → Verbinden.
+- Offen: DeepOBD.zip Upload-Kanal seitens Gateway weiterhin defekt (Watcher aktiv); DDE4-DTC-Klartexte nur via SGBD/Dump-Discovery (NickTullos-Ansatz) lösbar; Chrome-Version am Honor Magic Pro 8 unbekannt (System-Check zeigt sie jetzt an).
+
+Nächste Schritte:
+1. Nutzer-Feedback zu v1.3.0 (Installation + System-Check-Screenshot/Bericht)
+2. DTC-Discovery-Heuristik über 23 Mursteinen-Dumps (NickTullos-Methode) → echte DDE4-Fehlernummern-Tabelle
+3. DeepOBD-Datei: falls Watcher anschlägt → PRG/GRP/ccpage integrieren (tools/deepobd-extracted/)
+4. Kennfeld-Raster-Viewer (ZedSuite-Muster) + Session-Profile in DB
