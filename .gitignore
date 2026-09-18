@@ -1,2 +1,9 @@
-skills/
-node_modules/
+node_modules
+.next
+out
+build
+*.log
+dev.log
+db/*.db
+db/*.db-journal
+.DS_Store

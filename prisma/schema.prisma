@@ -1,0 +1,21 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model OperationLog {
+  id         String   @id @default(cuid())
+  operation  String
+  status     String   @default("OK")
+  vehicle    String?
+  ecuType    String?
+  details    String?
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
