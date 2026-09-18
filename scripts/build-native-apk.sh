@@ -31,7 +31,7 @@ AJ="${AJ:-/home/z/android-build/tools/android-34/android.jar}"
 KS="${KS:-$SRC_DIR/qflash21-v12.keystore}"
 KS_ALIAS="qflash21"
 KS_PASS="${KS_PASS:-Qflash21-2026!Twa}"
-OUT_APK="${OUT_APK:-QFLASH21-v2.2.0.apk}"
+OUT_APK="${OUT_APK:-QFLASH21-v2.3.0.apk}"
 
 echo "==> 0/6 Standalone-Assets prüfen"
 if [ ! -f "$SRC_DIR/assets/www/index.html" ]; then

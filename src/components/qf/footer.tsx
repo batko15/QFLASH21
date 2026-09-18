@@ -8,7 +8,7 @@ export function QfFooter() {
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-xs text-muted-foreground sm:flex-row">
         <p className="flex items-center gap-1.5">
           <CircuitBoard className="h-3.5 w-3.5 text-primary" aria-hidden />
-          <span className="font-semibold text-foreground">QFLASH21</span> v2.2.0 · Standalone-Android-App (Interceptor-Architektur, 100 % offline) + Web Serial + WebUSB
+          <span className="font-semibold text-foreground">QFLASH21</span> v2.3.0 · Standalone-Android-App (Interceptor-Architektur, 100 % offline) + Web Serial + WebUSB
         </p>
         <p className="text-center">
           Nur für eigene Fahrzeuge und Schulungszwecke. Garantie-/Gewährleistungsausschluss – Eingriffe am

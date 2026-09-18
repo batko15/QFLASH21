@@ -1,7 +1,7 @@
 /**
- * QFLASH21 v2.2.0 – Native-API-Adapter (App-Modus).
+ * QFLASH21 v2.3.0 – Native-API-Adapter (App-Modus).
  *
- * In der Standalone-Android-App (v2.2.0) läuft KEIN HTTP-Server mehr: Assets
+ * In der Standalone-Android-App (v2.3.0) läuft KEIN HTTP-Server mehr: Assets
  * werden per shouldInterceptRequest aus der APK bedient und die beiden
  * API-Endpunkte (/api/logs, /api/analyze-dtc) laufen synchron über die
  * JavaScript-Brücke `window.QfNativeApi` (Klasse QfNativeApi der APK), weil

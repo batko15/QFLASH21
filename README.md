@@ -199,9 +199,9 @@ Web Serial (FTDI 0403:6001)
   → Ident / DTC / Live / Security / Flash-Services (ISO 14230-2)
 ```
 
-### Android-App v2.2.0 – STANDALONE (Interceptor-Architektur, 100 % offline)
+### Android-App v2.3.0 – STANDALONE (Interceptor + Native Selbst-Diagnose + Reparaturleiter)
 
-**Download:** `https://qflashk.vercel.app/apk/QFLASH21-v2.2.0.apk` (oder [apk/QFLASH21-v2.2.0.apk](apk/QFLASH21-v2.2.0.apk) im Repo / [GitHub Release v2.2.0](https://github.com/batko15/QFLASH21/releases/tag/v2.2.0)).
+**Download:** `https://qflashk.vercel.app/apk/QFLASH21-v2.3.0.apk` (oder [apk/QFLASH21-v2.3.0.apk](apk/QFLASH21-v2.3.0.apk) im Repo / [GitHub Release v2.3.0](https://github.com/batko15/QFLASH21/releases/tag/v2.3.0)).
 
 **v2.2.0 ist eine vollwertige, KOMPLETT eigenständige Android-App** – die gesamte
 Web-Oberfläche (alle Chunks, Bilder, Konfigs) ist **in die APK eingebettet** und wird
@@ -236,6 +236,13 @@ WebViewAssetLoader-Muster, ohne AndroidX). Die App funktioniert im
 └───────────────────────────────────────────────────────────────┘
 ```
 
+- **NEU in v2.3.0 (nach Weiß-Screen-Befund v2.2.0):** NATIVE Statusleiste
+  (außerhalb der WebView: App-Version, WebView-Version, Ladephase, JS-Fehler) +
+  AUTOMATISCHE REPARATURLEITER: Neuladen → WebView-Neuaufbau mit
+  SOFTWARE-Rendering → direkter Datei-Modus (`file:///android_asset/www/`,
+  unabhängig von Interception/Netzwerkschicht) → nativer Fehlerbericht mit
+  „Bericht kopieren". Die App diagnostiziert sich jetzt SELBST – nie wieder
+  stummer Weiß-Screen.
 - **WARUM v2.2.0? (Fix für „App bleibt weiß"):** v2.1.0 servierte die Oberfläche über
   einen Loopback-HTTP-Server (`127.0.0.1:21921`). Auf dem Gerät des Nutzers erreichte
   die WebView-Netzwerkschicht diesen Server nie (bekanntes Cleartext/localhost-Problem,
@@ -254,7 +261,7 @@ WebViewAssetLoader-Muster, ohne AndroidX). Die App funktioniert im
 - 5-Baud-Init über natives BREAK (FTDI SET_DATA Bit 14 / CH340 Registerpaar 0x1805 /
   CP210x SET_BREAK), 10400/38400/125000 Baud.
 - Gleiche Paket-ID + Signatur wie v1.3.x/v2.0.0/v2.1.0 (`6c62fd…`) → direktes Upgrade.
-- **Legacy:** v2.1.0 (Loopback-Server), v2.0.0 (Website online nötig) und TWA v1.3.1
+- **Legacy:** v2.2.0/v2.1.0/v2.0.0 (Chronik in apk/README.md) und TWA v1.3.1
   bleiben im Repo-Chronik-Ordner dokumentiert ([apk/README.md](apk/README.md)).
 - Details, Installations-Schritte (inkl. MagicOS „Reiner Modus") und Build-Anleitung:
   **[apk/README.md](apk/README.md)**.

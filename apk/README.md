@@ -1,6 +1,47 @@
 # QFLASH21 Android-APK
 
-## v2.2.0 – STANDALONE Interceptor (empfohlen: komplett eigenständig, 100 % offline, FIX für „weiße App")
+## v2.3.0 – STANDALONE Interceptor + NATIVE SELBSTDAGNOSE + REPARATURLEITER (empfohlen)
+
+| Datei | Zweck |
+|---|---|
+| `QFLASH21-v2.3.0.apk` | **Empfohlen**: Komplette App (~9 MB) mit Interceptor-Architektur, nativer Statusanzeige und 3-Pfad-Reparaturleiter |
+| Web-Direktlink | `https://qflashk.vercel.app/apk/QFLASH21-v2.3.0.apk` |
+| GitHub Release | `https://github.com/batko15/QFLASH21/releases/tag/v2.3.0` |
+
+### Was ist neu? (versionCode 53)
+
+**Befund aus v2.2.0:** Nutzer-Screenshot zeigte komplett weiß – weder SSR-Inhalt noch
+Fehlerseite. Diagnose: Die WebView selbst renderte nichts (Inhalt nachgewiesen intakt).
+
+**Gegenmaßnahmen v2.3.0:**
+
+1. **NATIVE STATUSLEISTE** (außerhalb der WebView, verschwindet nach Bestätigung
+   des Renderns): `QFLASH21 v2.3.0 · Standalone · WebView: Chromium <X>` + Ladephase
+   + letzter Fehler + JS-Konsolenfehler. → Der nächste Screenshot zeigt die URSACHE.
+2. **REPARATURLEITER** bei leerem/hängendem Render (Watchdogs: 6 s + 14 s):
+   - Versuch 1: Neuladen ohne Cache
+   - Versuch 2: WebView-NEUAUFBAU mit **SOFTWARE-Rendering** (LAYER_TYPE_SOFTWARE –
+     behebt HW-Composer-Probleme von ROMs wie MagicOS)
+   - Versuch 3: **Direkter Datei-Modus** `file:///android_asset/www/index.html`
+     (komplett unabhängig von Interception/DNS/Netzwerkschicht; index.html nutzt
+     dafür relative Pfade – Snapshot-Skript schreibt sie um)
+   - Versuch 4: Nativer Fehlerbericht (reines Android-Layout) mit
+     „Bericht kopieren" + „App neu starten"
+3. **FrameLayout** als Root statt Custom-ViewGroup ohne onMeasure
+   (möglicher Render-Risikofaktor aus v2.2.0).
+4. Erlaubnis für file://-Asset-Zugriff (`setAllowFileAccessFromFileURLs`) nur im
+   Notfallpfad relevant.
+
+### Installation v2.3.0
+
+Upgrade über v2.2.0/v2.1.0/v2.0.0/v1.3.x direkt möglich (gleiche Signatur `6c62fd…`).
+Statusleiste beim Start beobachten: Zeigt sie eine Warnung mit Reparaturversuch,
+läuft die Selbstreparatur; bleibt am Ende ein Fehlerbericht, „Bericht kopieren"
+antippen und im Chat einfügen.
+
+---
+
+## v2.2.0 – STANDALONE Interceptor (Legacy: ohne Statusanzeige/Reparaturleiter)
 
 | Datei | Zweck |
 |---|---|

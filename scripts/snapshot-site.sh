@@ -74,27 +74,47 @@ for p in $PUB; do
   fi
 done
 
-echo "==> 4/5 Standalone-Version-Patch (v2.1.0 -> v2.2.0, Interceptor-Architektur)"
+echo "==> 4/5 Version-Patch (v2.2.0 -> v2.3.0) + RELATIVE PFADE (file://-Notfallpfad)"
 find "$WWW" -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' \) -print0 | xargs -0 sed -i \
-  -e 's/v2\.1\.0/v2.2.0/g' \
-  -e 's/"2\.1\.0"/"2.2.0"/g' \
-  -e "s/'2\.1\.0'/'2.2.0'/g" \
-  -e 's/Standalone-Android-App (100 % offline)/Standalone-Android-App (Interceptor-Architektur, 100 % offline)/g' \
-  -e 's/über v2\.0\.0\/v1\.3.x/über v2.1.0\/v2.0.0\/v1.3.x/g' \
-  -e 's/und KOMPLETT eingebetteter Oberfläche: 100 % offline/und KOMPLETT eingebetteter Oberfläche mit Interceptor-Architektur (kein Server, kein Port): 100 % offline/g'
+  -e 's/v2\.2\.0/v2.3.0/g' \
+  -e 's/"2\.2\.0"/"2.3.0"/g' \
+  -e "s/'2\.2\.0'/'2.3.0'/g" \
+  -e 's/über v2\.1\.0\/v2\.0\.0\/v1\.3.x/über v2.2.0\/v2.1.0\/v2.0.0\/v1.3.x/g'
+
+# RELATIVE Pfade in index.html: damit auch der Notfall-Lademodus
+# file:///android_asset/www/index.html funktioniert (Interception greift bei
+# file:// nicht – die WebView lädt die Assets dann NATIV aus der APK).
+# Relative Pfade funktionieren BEIDE Wege: gegen https://appassets.androidplatform.net/
+# (Interception) und gegen file:///android_asset/www/ (WebView-Asset-Zugriff).
+sed -i \
+  -e 's|href="/_next/|href="_next/|g' \
+  -e 's|src="/_next/|src="_next/|g' \
+  -e 's|href="/manifest.json"|href="manifest.json"|g' \
+  -e 's|href="/favicon-32.png"|href="favicon-32.png"|g' \
+  -e 's|href="/icons/|href="icons/|g' \
+  -e 's|href="/downloads/|href="downloads/|g' \
+  "$WWW/index.html"
+# url(...)-Referenzen in CSS ebenfalls relativieren (Fonts/Bilder):
+# /_next/static/... → ../static/... relativ zur chunks-Datei? Nein – CSS liegt in
+# _next/static/immutable/chunks/, also ist ../.. = _next/static/... Für Maximale
+# Kompatibilität in beiden Modi wird auf relativ zur CSS-Datei umgeschrieben.
+find "$WWW/_next" -name '*.css' -print0 2>/dev/null | while IFS= read -r -d '' css; do
+  # CSS liegt unter <www>/_next/static/immutable/chunks/ → /_next/static = ../../..
+  sed -i 's|url(/_next/static/|url(../../../static/|g' "$css"
+done
 
 echo "==> 5/5 Verifikation"
 [ -s "$WWW/index.html" ] || { echo "FEHLER: index.html leer" >&2; exit 1; }
 grep -q '</html>' "$WWW/index.html" || { echo "FEHLER: index.html unvollständig" >&2; exit 1; }
 ls "$WWW/_next/static/immutable/chunks" >/dev/null 2>&1 || { echo "FEHLER: keine Chunks" >&2; exit 1; }
 
-REST="$(find "$WWW" -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' \) -exec grep -l '2\.1\.0' {} + 2>/dev/null || true)"
+REST="$(find "$WWW" -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' \) -exec grep -l '2\.2\.0' {} + 2>/dev/null || true)"
 if [ -n "$REST" ]; then
-  echo "WARN: 2.1.0-Reste in:" >&2
+  echo "WARN: 2.2.0-Reste in:" &>2
   echo "$REST" | head -5 >&2
 fi
 
-VOK="$(grep -rl 'v2\.2\.0' "$WWW" --include='*.html' --include='*.js' | wc -l)"
+VOK="$(grep -rl 'v2\.3\.0' "$WWW" --include='*.html' --include='*.js' | wc -l)"
 N="$(find "$WWW" -type f | wc -l)"
 SIZE="$(du -sh "$WWW" | cut -f1)"
 echo "    ✓ index.html vollständig"
