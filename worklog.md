@@ -247,3 +247,24 @@ Nächste Schritte:
 1. Fahrzeug-Realtest: initiale Keywords am echten DDE4 loggen (6B/8F bestätigen?)
 2. Kennfeld-Raster-Viewer + Session-Profile in DB (Anschlussrunde)
 3. DeepOBD.rar (Nutzer) – weiterhin nicht angekommen; DeepOBD-ccpage-Schale wäre via XSD-Format integrierbar
+
+---
+Task ID: 8
+Agent: Z.ai Code (Hauptagent)
+Task: „Apk Android funktioniert nicht" – APK-Neubau als echte TWA + EDC15C4-Wissensbasis aus Nutzer-PDFs („KI-Tuning-Agent für BMW EDC15 Konfiguration")
+
+Work Log:
+- **Diagnose alter APK (v1.1.0, 87 KB):** handgebauter „Launcher", der nur Chrome mit der URL öffnet. Kein App-Erlebnis (Browser-Tab mit URL-Balken), Fallback zeigt Toast „Kein Browser gefunden"; Produktion lieferte die APK gar nicht aus (404). Nutzer-Fehlerbild (MagicOS): Install-Blockade (Pure Mode/Play Protect) und/oder fehlendes Chrome → „funktioniert nicht".
+- **Neuer TWA-APK v1.2.0 (2,6 MB)** komplett neu gebaut: AndroidX browser 1.8.0 + androidbrowserhelper 2.5.0 (echte Trusted Web Activity) – fullscreen in Chrome, Web-Serial-fähig (Chrome-Engine), Fallback Custom Tab. Manifest: DEFAULT_URL, Status/Nav-Bar-Farben, FALLBACK_STRATEGY=customtabs, autoVerify-Deep-Link, queries für CustomTabsService.
+- **Hand-Build ohne Gradle** (scripts/build-twa-apk.sh): build-tools r34 + platform-34 via Google-Repository besorgt; Bibliotheken von Google Maven; ecj 3.33 (nur JRE, kein javac); aapt2-Res-Merge (App+3 Libs) → ecj → d8 (Multi-Release-JAR-Bug von concurrent-futures 1.2.0 umgangen → 1.1.0) → zipalign → apksigner. Neues Keystore qflash21-v12.keystore (lokal, nicht im Repo; Passwort im Chat mitgeteilt).
+- **assetlinks.json** (SHA-256 6C62FD…7E) → public/.well-known/ → Produktion 200 ✅ (Fullscreen-Verifizierung).
+- **APK-Distribution:** public/apk/QFLASH21-v1.2.0.apk (Website-Download 200 ✅) + apk/ im Repo + GitHub-Release v1.2.0 (ID 391477564, Asset 201 ✅).
+- **Tuning-Wissen (aus den 3 Nutzer-PDFs, identischer Bericht):** neuer Tab „Tuning-Wissen" mit src/lib/edc15-knowledge.ts + tuning-panel.tsx: Stage-1-Ziel (184→230 PS, 390→480 Nm, IQ 58→71–73 mg/Hub), Limiter-Kette IQ_final=min(driver,torque,smoke), Hardware-Guardrails (CP1 ≤1350 bar, GT2556V 2250–2350 mbar, SVBL=Max+100–150, AFR≥16.0, IAT ab 65 °C reduzieren), Kalibrier-Rechner (AFR/λ, SVBL, mm³↔mg, IQ↔Nm-Näherung), Stage-1-Workflow-Checkliste (4 Schritte, toggling), Klima-Tabelle Gelibolu, Android-Installations-Guide (MagicOS Pure Mode, Play Protect, Chrome-Pflicht, alte Version deinstallieren), Zero-Trust-Warnung + Referenzen.
+- **Sonstiges:** dde4.ts DTC 4496 (Rail Pressure Plausibility) ergänzt; Mobile-Bottom-Nav 6 Items (grid-cols-6); docs/EDC15C4-KI-AGENT.md (AGENTS.md-System-Prompt, MCP-Konfiguration, XDF-Parsing, Quellen); README + apk/README aktualisiert; Hydration-Bug (Badge im <p>) in tuning-panel behoben; .gitignore (build/, entpackte AARs, keystore).
+- **Verifikation:** tsc 0 Fehler, lint sauber. agent-browser E2E: Tuning-Tab alle 8 Karten, Workflow-Toggle, AFR-Rechner 950/58→16,38, Klima-Tabelle, Simulator-Connect OK, Mobile-Viewport 6-Item-Nav, frischer Kontext 0 Konsolenfehler. Produktion: apk 200, assetlinks 200. Commit c20da68 gepusht.
+
+Stage Summary:
+- APK-Problem an der Wurzel gelöst: echte TWA statt Browser-Shortcut; Download jetzt direkt von qflashk.vercel.app/apk/QFLASH21-v1.2.0.apk und GitHub-Release v1.2.0.
+- Nutzer-PDFs vollständig in App + Repo integriert (Tuning-Tab, DTC 4496, docs/EDC15C4-KI-AGENT.md).
+- Nächste Schritte: Nutzer-Installations-Test am Honor Magic Pro 8 (Feedback erbeten); Fahrzeug-Realtest 5-Baud-Init (Keywords 6B/8F loggen); ggf. APK v1.2.1 bei Feedback; DeepOBD-Datei immer noch nicht angekommen (Upload-Kanal).
+
