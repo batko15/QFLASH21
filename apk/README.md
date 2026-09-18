@@ -1,45 +1,65 @@
 # QFLASH21 Android-APK
 
-## v2.1.0 – STANDALONE (empfohlen: komplett eigenständig, 100 % offline)
+## v2.2.0 – STANDALONE Interceptor (empfohlen: komplett eigenständig, 100 % offline, FIX für „weiße App")
 
 | Datei | Zweck |
 |---|---|
-| `QFLASH21-v2.1.0.apk` | **Empfohlen**: Komplette App mit EINGEBETTETER Website (~9 MB) – funktioniert im Flugmodus |
-| Web-Direktlink | `https://qflashk.vercel.app/apk/QFLASH21-v2.1.0.apk` |
-| GitHub Release | `https://github.com/batko15/QFLASH21/releases/tag/v2.1.0` |
+| `QFLASH21-v2.2.0.apk` | **Empfohlen**: Komplette App mit EINGEBETTETER Website (~9 MB) – funktioniert im Flugmodus |
+| Web-Direktlink | `https://qflashk.vercel.app/apk/QFLASH21-v2.2.0.apk` |
+| GitHub Release | `https://github.com/batko15/QFLASH21/releases/tag/v2.2.0` |
 
-### Architektur v2.1.0 (versionCode 51, ~9 MB, Android 7.0+)
+### Architektur v2.2.0 (versionCode 52, ~9 MB, Android 7.0+)
 
 ```
-MainActivity (WebView → http://127.0.0.1:<Port>)
-  ├─ QfAssetServer (Thread-per-Connection, nur 127.0.0.1, Pfad-Traversal-Schutz)
+MainActivity (WebView → https://appassets.androidplatform.net/)
+  ├─ QfAssetInterceptor (WebViewClient.shouldInterceptRequest)
   │    ├─ assets/www/index.html + _next/static/immutable/** (gesamte Web-App)
-  │    ├─ assets/www/downloads/DeepOBD-Konfigs-M57-M47.zip (via DownloadManager nach Downloads/)
-  │    ├─ /api/logs        → Operationshistorie LOKAL (filesDir/operation-log.json, max. 500)
-  │    ├─ /api/analyze-dtc → offline-Werkstatt-Hinweise (Regeltabelle = Server-Fallback)
-  │    └─ /sw.js → bewusst 404 (kein Service Worker nötig – alles ist lokal)
-  └─ SerialBridge  (addJavascriptInterface → window.QfSerialBridge)
-       ├─ FtdiDriver    SIO-Requests 1:1 aus ftdi_sio.c  (Reset/Purge/Baud/SET_DATA/Latency/DTR-RTS)
-       ├─ Ch340Driver   ch341.c-Register (0x5F/0xA1/0x9A·0x1312/0x2518/0xA4, BREAK 0x1805)
-       └─ Cp2102Driver  cp210x.c-Requests (0x1E Baud u32-LE, 0x03 LINE_CTL, 0x07 MHS, 0x16 BREAK)
-            └─ Android USB-Host-API (UsbManager → bulkTransfer) → K+DCAN per USB-OTG
+  │    ├─ assets/www/downloads/DeepOBD-Konfigs-M57-M47.zip (nativ via MediaStore nach Downloads/)
+  │    ├─ /api/*  → bewusst 501 (APIs laufen über window.QfNativeApi, da
+  │    │             shouldInterceptRequest den POST-Body nicht bereitstellt)
+  │    └─ /sw.js  → bewusst 404 (kein Service Worker nötig – alles ist lokal)
+  ├─ QfNativeApi  (addJavascriptInterface → window.QfNativeApi)
+  │    ├─ postOperationLog/getOperationLogs → Operationshistorie LOKAL (filesDir/operation-log.json, max. 500)
+  │    ├─ analyzeDtc → offline-Werkstatt-Hinweise (Regeltabelle = Server-Fallback)
+  │    ├─ saveAssetToDownloads → APK-Asset nativ nach Downloads/ (MediaStore ab API 29)
+  │    ├─ appInfo/consoleTail/copyToClipboard → Diagnostik
+  │    └─ (WebChromeClient.onConsoleMessage sammelt JS-Konsole fürs Fehlerbild)
+  ├─ SerialBridge  (addJavascriptInterface → window.QfSerialBridge)
+  │    ├─ FtdiDriver    SIO-Requests 1:1 aus ftdi_sio.c  (Reset/Purge/Baud/SET_DATA/Latency/DTR-RTS)
+  │    ├─ Ch340Driver   ch341.c-Register (0x5F/0xA1/0x9A·0x1312/0x2518/0xA4, BREAK 0x1805)
+  │    └─ Cp2102Driver  cp210x.c-Requests (0x1E Baud u32-LE, 0x03 LINE_CTL, 0x07 MHS, 0x16 BREAK)
+  │         └─ Android USB-Host-API (UsbManager → bulkTransfer) → K+DCAN per USB-OTG
+  └─ NIE WIEDER WEIẞ (4 Verteidigungslinien):
+       1. onReceivedError/onReceivedHttpError (Main-Frame) → deutsche Fehlerseite
+          mit Diagnose + Konsolenprotokoll + „Diagnose kopieren" + „ERNEUT VERSUCHEN"
+       2. Render-Watchdog (6 s): leere Oberfläche → Fehlerseite statt weiß
+       3. onRenderProcessGone → WebView wird NEU AUFGEBAUT (bekannte White-Screen-Ursache)
+       4. QfApp + CrashActivity: globaler Crash-Handler mit deutschem Bericht
 ```
 
-**Warum Standalone?** v2.0.0 lud die Oberfläche von `qflashk.vercel.app` – ohne
-Internet bzw. ohne Website lief die App nicht (und jede Änderung an der Website
-veränderte das App-Verhalten). v2.1.0 beendet diese Abhängigkeit ENDGÜLTIG:
+**WARUM v2.2.0? (Root-Cause-Fix für „Die Applikation bleibt einfach weiß")**
 
-- **Gesamte Web-App eingebettet** (`scripts/snapshot-site.sh` spiegelt die
-  Produktionssite nach `apk-src/assets/www/` und patcht die Version auf die
-  APK-Version) – die App verhält sich IMMER wie beim Build, egal was online passiert.
-- **Lokaler Server statt Internet:** `usesCleartextTraffic="true"` betrifft NUR den
-  Loopback `127.0.0.1`; fester Port (21921 ff.) → localStorage/Einstellungen bleiben
-  über App-Starts erhalten.
-- **Keine Auto-Verify-Deep-Links mehr** (Loop-Gefahr) – die App ist rein lokal.
-- Downloads über den **System-DownloadManager** (kann den App-Loopback erreichen).
+v2.1.0 servierte die Oberfläche über einen eigenen HTTP-Server auf `127.0.0.1:21921`.
+Auf dem Gerät des Nutzers blieb die WebView dadurch WEIß – der Chromium-Netzwerk-Stack
+erreichte den Loopback-Server nicht (bekanntes Problem: Google Issue Tracker „Android
+WebView Blocking Cleartext HTTP Traffic to localhost", chromium.org #40933016 „Blank
+screen in apps with webview"; Auslöser auf ROMs: Cleartext-Restriktionen, VPN-/AdBlocker-
+Interferenz auf Loopback, OEM-Anpassungen wie MagicOS).
+
+v2.2.0 entfernt die Netzwerkschicht KOMPLETT – nach dem offiziellen
+**WebViewAssetLoader-Muster** (developer.android.com, androidx.webkit):
+`shouldInterceptRequest` fängt ALLE Requests der virtuellen Domain
+`https://appassets.androidplatform.net/` ab und bedient sie direkt aus dem
+AssetManager. **Kein Socket, kein Port, kein Cleartext, kein DNS, keine VPN-Interferenz
+mehr** – strukturell immun gegen die gesamte v2.1.0-Ausfallklasse.
+
+- **Secure Context** durch https-Schema (Clipboard, crypto, localStorage) – ohne Server.
+- Web-App erkennt die Brücken automatisch: `window.QfSerialBridge` (USB) +
+  `window.QfNativeApi` (lokale APIs/Downloads, `src/lib/kwp/native-api.ts`);
+  Website-Code bleibt unverändert lauffähig (fetch-Fallbacks).
 - USB-Treiberschicht unverändert nativ (FTDI/CH340/CP2102, 5-Baud-Init über BREAK,
   RX-Pump mit 64-KB-Ringpuffer + Status-Byte-Stripping, USB-Detach-Event).
-- Gleiche Paket-ID `de.qflash21.app` + Signatur `6c62fd…` wie v1.3.x/v2.0.0 →
+- Gleiche Paket-ID `de.qflash21.app` + Signatur `6c62fd…` wie v1.3.x/v2.0.0/v2.1.0 →
   sauberes Upgrade ohne Deinstallation.
 
 **Build (2 Schritte):**
@@ -47,21 +67,46 @@ veränderte das App-Verhalten). v2.1.0 beendet diese Abhängigkeit ENDGÜLTIG:
 ```bash
 bash scripts/snapshot-site.sh     # 1) Produktionssite → apk-src/assets/www/ (11 MB, 18 Dateien)
 bash scripts/build-native-apk.sh  # 2) aapt2(-A assets) → javac/ecj → d8 → DEX-Checks →
-                                  #    Asset-Checks → zipalign → apksigner  →  QFLASH21-v2.1.0.apk
+                                  #    Asset-Checks → zipalign → apksigner  →  QFLASH21-v2.2.0.apk
 ```
 
-Build-Sicherheitsklemmen: 9 Klassen im DEX (inkl. neuem `QfAssetServer`),
-`assets/www/index.html` + ≥ 8 `_next`-Dateien + Konfigs-ZIP im APK – sonst Abbruch.
+Build-Sicherheitsklemmen: 10 Klassen im DEX (inkl. `QfAssetInterceptor` + `QfNativeApi`,
+ohne das entfernte `QfAssetServer`), `assets/www/index.html` + ≥ 8 `_next`-Dateien +
+Konfigs-ZIP im APK – sonst Abbruch.
 
-### Installation v2.1.0
+### Installation v2.2.0
 
-1. APK herunterladen und öffnen (Dateimanager → Downloads). Upgrade über v2.0.0/v1.3.x direkt möglich.
+1. APK herunterladen und öffnen (Dateimanager → Downloads). Upgrade über
+   v2.1.0/v2.0.0/v1.3.x direkt möglich (gleiche Signatur).
 2. MagicOS (Honor): ggf. „Reiner Modus" (Pure Mode) deaktivieren – blockiert Sideloads.
 3. Play-Protect-Hinweis mit „Trotzdem installieren" bestätigen.
-4. K+DCAN-Kabel per USB-OTG anschließen → App öffnet (auch im Flugmodus) →
-   Tab „Verbindung" → „Verbinden" → beim ersten Mal USB-Berechtigung bestätigen.
-5. Tab „System-Check" zeigt **„Bereit – Standalone-App (USB-Host-API, 100 % offline)"** (grün).
-6. DeepOBD-Konfigs: Tab „DDE4-Konfigs" → Download landet offline in `Downloads/`.
+4. App öffnen → lädt SOFORT offline (Flugmodus egal) → Tab „Verbindung" → „Verbinden"
+   → K+DCAN per USB-OTG → beim ersten Mal USB-Berechtigung bestätigen.
+5. Tab „System-Check" zeigt **„Bereit für K+DCAN per USB-OTG"** (grün) + APK-Karte v2.2.0.
+6. DeepOBD-Konfigs: Tab „DDE4-Konfigs" → Download kopiert nativ nach `Downloads/`.
+
+**Falls doch einmal etwas nicht lädt:** Die App zeigt dann KEIN weißes Bild, sondern
+eine deutsche Fehlerseite mit Ursache + Konsolenprotokoll → „Diagnose kopieren" →
+Bericht hier in den Chat.
+
+---
+
+## v2.1.0 – STANDALONE Loopback-Server (Legacy – Weiß-Screen-Risiko, durch v2.2.0 ersetzt)
+
+**STATUS: Legacy. Auf dem Gerät des Nutzers blieb die App weiß (Loopback-Server von
+der WebView-Netzwerkschicht nicht erreichbar). Durch v2.2.0 (Interceptor) ersetzt.**
+
+| Datei | Zweck |
+|---|---|
+| `QFLASH21-v2.1.0.apk` | Legacy: komplette App eingebettet, aber Loopback-HTTP-Server (127.0.0.1:21921) – auf manchen Geräten weiß |
+
+### Architektur v2.1.0 (versionCode 51, ~9 MB)
+
+```
+MainActivity (WebView → http://127.0.0.1:21921)
+  ├─ QfAssetServer (Thread-per-Connection, nur 127.0.0.1, Pfad-Traversal-Schutz)
+  └─ SerialBridge (identisch zu v2.2.0)
+```
 
 ---
 

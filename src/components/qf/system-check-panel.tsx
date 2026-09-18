@@ -39,8 +39,8 @@ import {
 import { isNativeBridge, listNativeDevices, type QfNativeDeviceInfo } from '@/lib/kwp/native-bridge';
 
 /** Aktuelle Web-App-Version (parallel zur APK-Version halten) */
-const APP_VERSION = '2.1.0';
-const APK_URL = '/apk/QFLASH21-v2.1.0.apk';
+const APP_VERSION = '2.2.0';
+const APK_URL = '/apk/QFLASH21-v2.2.0.apk';
 
 type Status = 'ok' | 'warn' | 'fail' | 'info';
 
@@ -256,7 +256,7 @@ export function SystemCheckPanel() {
       ? {
           status: 'fail',
           title: 'Kein USB-Serial-Pfad verfügbar',
-          text: 'Die QFLASH21-APK v2.1.0 installieren (Standalone, kein Chrome/Internet nötig) – oder Google Chrome und diese Seite darin öffnen.',
+          text: 'Die QFLASH21-APK v2.2.0 installieren (Standalone, kein Chrome/Internet nötig) – oder Google Chrome und diese Seite darin öffnen.',
         }
       : env.serial && usbSerialNative
         ? {
@@ -357,9 +357,10 @@ export function SystemCheckPanel() {
         <CardHeader>
           <CardTitle className="text-base">Android-App (Standalone) v{APP_VERSION}</CardTitle>
           <CardDescription>
-            Echte App mit eigener USB-Treiberschicht (FTDI/CH340/CP2102) und KOMPLETT
-            eingebetteter Oberfläche: 100 % offline, kein Chrome, kein Internet, keine
-            Website nötig. Läuft auf jedem Android-Gerät ab 7.0.
+            Echte App mit eigener USB-Treiberschicht (FTDI/CH340/CP2102), KOMPLETT
+            eingebetteter Oberfläche und Interceptor-Architektur (kein Server, kein
+            Port): 100 % offline, kein Chrome, kein Internet. Läuft auf jedem
+            Android-Gerät ab 7.0.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -372,7 +373,7 @@ export function SystemCheckPanel() {
           <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground">
             <li>
               <strong className="text-foreground">APK herunterladen und öffnen</strong>{' '}
-              (Dateimanager → Downloads). v2.1.0 installiert direkt über v2.0.0/v1.3.x
+              (Dateimanager → Downloads). v2.2.0 installiert direkt über v2.1.0/v2.0.0/v1.3.x
               (gleiche Signatur) – alte QFLASH21-Apps (v1.0–v1.2, andere Paket-ID) danach deinstallieren.
             </li>
             <li>

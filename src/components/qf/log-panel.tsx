@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useFlasher } from '@/store/flasher';
 import { fetchOperationLogSupabase, type OperationLogEntry } from '@/lib/supabase-log';
+import { fetchOperationLogs } from '@/lib/kwp/native-api';
 import type { LogDir } from '@/lib/kwp/types';
 import { cn } from '@/lib/utils';
 
@@ -75,8 +76,16 @@ const DIR_STYLE: Record<LogDir, { label: string; cls: string }> = {
   ok: { label: 'OK', cls: 'bg-success/15 text-success' },
 };
 
-/** Holt die Historie: zuerst Server-API, bei Fehlern Supabase-REST direkt. */
+/** Holt die Historie: zuerst Native-App-Brücke, dann Server-API, dann Supabase. */
 async function fetchHistory(): Promise<{ rows: OperationLogEntry[]; source: 'server' | 'supabase' }> {
+  try {
+    const native = await fetchOperationLogs(25);
+    if (native && native.logs.length >= 0 && isNativeContext()) {
+      return { rows: native.logs as OperationLogEntry[], source: 'server' };
+    }
+  } catch {
+    // → Fallback
+  }
   try {
     const res = await fetch('/api/logs?limit=25');
     if (res.ok) {
@@ -88,6 +97,14 @@ async function fetchHistory(): Promise<{ rows: OperationLogEntry[]; source: 'ser
   }
   const rows = await fetchOperationLogSupabase(25);
   return { rows, source: 'supabase' };
+}
+
+function isNativeContext(): boolean {
+  try {
+    return typeof window !== 'undefined' && !!window.QfNativeApi;
+  } catch {
+    return false;
+  }
 }
 
 export function LogPanel() {

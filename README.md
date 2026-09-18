@@ -199,27 +199,34 @@ Web Serial (FTDI 0403:6001)
   → Ident / DTC / Live / Security / Flash-Services (ISO 14230-2)
 ```
 
-### Android-App v2.1.0 – STANDALONE (komplett eigenständig, 100 % offline)
+### Android-App v2.2.0 – STANDALONE (Interceptor-Architektur, 100 % offline)
 
-**Download:** `https://qflashk.vercel.app/apk/QFLASH21-v2.1.0.apk` (oder [apk/QFLASH21-v2.1.0.apk](apk/QFLASH21-v2.1.0.apk) im Repo / [GitHub Release v2.1.0](https://github.com/batko15/QFLASH21/releases/tag/v2.1.0)).
+**Download:** `https://qflashk.vercel.app/apk/QFLASH21-v2.2.0.apk` (oder [apk/QFLASH21-v2.2.0.apk](apk/QFLASH21-v2.2.0.apk) im Repo / [GitHub Release v2.2.0](https://github.com/batko15/QFLASH21/releases/tag/v2.2.0)).
 
-**v2.1.0 ist eine vollwertige, KOMPLETT eigenständige Android-App** – die gesamte
+**v2.2.0 ist eine vollwertige, KOMPLETT eigenständige Android-App** – die gesamte
 Web-Oberfläche (alle Chunks, Bilder, Konfigs) ist **in die APK eingebettet** und wird
-von einem lokalen Server in der App selbst ausgeliefert. Die App funktioniert im
+per **WebView-Interceptor** direkt aus der APK ausgeliefert (offizielles
+WebViewAssetLoader-Muster, ohne AndroidX). Die App funktioniert im
 **Flugmodus** – kein Internet, keine Website, kein Chrome, nichts:
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
 │  QFLASH21-App (de.qflash21.app, ~9 MB, Android 7.0+)          │
 │                                                               │
-│  MainActivity (WebView → http://127.0.0.1:<Port>)             │
-│   ├─ QfAssetServer: GESAMTE Web-App aus assets/www/           │
-│   │    (HTML + JS + CSS + Icons + DeepOBD-Konfigs-ZIP)        │
-│   │    + lokale /api/logs (Operationshistorie im App-Speicher)│
-│   │    + lokale /api/analyze-dtc (offline-Werkstatt-Hinweise) │
-│   └─ addJavascriptInterface("QfSerialBridge")                 │
-│        │                                                      │
-│  SerialBridge (Java, @JavascriptInterface)                    │
+│  MainActivity (WebView → https://appassets.androidplatform.net)│
+│   ├─ QfAssetInterceptor (shouldInterceptRequest):              │
+│   │    GESAMTE Web-App aus assets/www/ – KEIN Socket, KEIN     │
+│   │    Port, KEIN Cleartext, KEIN DNS, KEINE VPN-Interferenz   │
+│   ├─ QfNativeApi (window.QfNativeApi):                         │
+│   │    /api/logs (Operationshistorie im App-Speicher)          │
+│   │    /api/analyze-dtc (offline-Werkstatt-Hinweise)           │
+│   │    Downloads nach Downloads/ (MediaStore, offline)         │
+│   ├─ addJavascriptInterface("QfSerialBridge")                  │
+│   └─ NIE WIEDER WEIß: onReceivedError → deutsche Fehlerseite   │
+│        mit Diagnose + „Erneut versuchen" · Render-Watchdog ·   │
+│        onRenderProcessGone → WebView-Neuaufbau                 │
+│                                                               │
+│  SerialBridge (Java, @JavascriptInterface)                     │
 │   ├─ FtdiDriver   FT232R/FT231X  (0403:6001/6015)             │
 │   ├─ Ch340Driver  CH340/CH341    (1a86:7523)                  │
 │   └─ Cp2102Driver CP2102         (10c4:ea60)                  │
@@ -229,22 +236,26 @@ von einem lokalen Server in der App selbst ausgeliefert. Die App funktioniert im
 └───────────────────────────────────────────────────────────────┘
 ```
 
-- **100 % offline:** Der lokale `QfAssetServer` serviert die eingebettete Oberfläche
-  über `127.0.0.1` (fester Port → Einstellungen/localStorage bleiben erhalten).
-  Downloads (z. B. DeepOBD-Konfigs-ZIP) landen über den System-DownloadManager in
-  `Downloads/` – ebenfalls komplett offline.
-- **Kein Chrome, keine Web-Serial-API, keine Domain-Verifizierung** – die USB-Serial-
-  Treiber laufen NATIV (Baudraten-/BREAK-Mathematik 1:1 aus dem Linux-Kernel:
+- **WARUM v2.2.0? (Fix für „App bleibt weiß"):** v2.1.0 servierte die Oberfläche über
+  einen Loopback-HTTP-Server (`127.0.0.1:21921`). Auf dem Gerät des Nutzers erreichte
+  die WebView-Netzwerkschicht diesen Server nie (bekanntes Cleartext/localhost-Problem,
+  ROM-/VPN-Interferenz) → weiße Fläche. v2.2.0 eliminiert die Netzwerkschicht VOLLSTÄNDIG:
+  Requests werden in `shouldInterceptRequest` abgefangen, es fließt kein einziges Paket.
+- **100 % offline:** die gesamte Oberfläche + DeepOBD-Konfigs stecken in der APK;
+  der Konfigs-Download wird nativ (MediaStore) nach `Downloads/` kopiert.
+- **Kein Chrome, keine Web-Serial-API, keine Domain-Verifizierung, kein Port** – die
+  USB-Serial-Treiber laufen NATIV (Baudraten-/BREAK-Mathematik 1:1 aus dem Linux-Kernel:
   `ftdi_sio.c`, `ch341.c`, `cp210x.c`; identisch zur WebUSB-Portierung der Web-App).
-- Die eingebettete App erkennt die Bridge automatisch (`window.QfSerialBridge`) und
-  nutzt sie als bevorzugten Verbindungsweg (`src/lib/kwp/native-bridge.ts`).
-- Nativer **deutscher Fehlerbericht** bei jedem Crash (Stacktrace + „Fehler kopieren").
+- Die eingebettete App erkennt beide Bridges automatisch (`window.QfSerialBridge` für
+  USB, `window.QfNativeApi` für lokale APIs – `src/lib/kwp/native-bridge.ts` +
+  `src/lib/kwp/native-api.ts`) und nutzt sie als bevorzugten Verbindungsweg.
+- Nativer **deutscher Fehlerbericht** bei jedem Crash + Fehlerseite mit Diagnose-Kopieren,
+  falls doch einmal etwas nicht lädt (nie wieder eine weiße Fläche ohne Meldung).
 - 5-Baud-Init über natives BREAK (FTDI SET_DATA Bit 14 / CH340 Registerpaar 0x1805 /
   CP210x SET_BREAK), 10400/38400/125000 Baud.
-- Gleiche Paket-ID + Signatur wie v1.3.x/v2.0.0 (`6c62fd…`) → direktes Upgrade.
-- **Legacy:** v2.0.0 (Website online nötig) und TWA v1.3.1 bleiben verfügbar
-  ([apk/QFLASH21-v2.0.0.apk](apk/QFLASH21-v2.0.0.apk) /
-  [apk/QFLASH21-v1.3.1.apk](apk/QFLASH21-v1.3.1.apk)).
+- Gleiche Paket-ID + Signatur wie v1.3.x/v2.0.0/v2.1.0 (`6c62fd…`) → direktes Upgrade.
+- **Legacy:** v2.1.0 (Loopback-Server), v2.0.0 (Website online nötig) und TWA v1.3.1
+  bleiben im Repo-Chronik-Ordner dokumentiert ([apk/README.md](apk/README.md)).
 - Details, Installations-Schritte (inkl. MagicOS „Reiner Modus") und Build-Anleitung:
   **[apk/README.md](apk/README.md)**.
 

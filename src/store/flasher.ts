@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { SerialClient, isWebSerialSupported, isAndroid, portKindFromInfo, DDE4_KEYWORDS } from '@/lib/kwp/serial-client';
 import { isWebUsbSupported, requestWebUsbDevice, WebUsbSerialPort, driverLabel } from '@/lib/kwp/webusb-serial';
 import { isNativeBridge, requestNativeDevice, NativeBridgeSerialPort } from '@/lib/kwp/native-bridge';
+import { reportOperationLog } from '@/lib/kwp/native-api';
 import { reportOperationSupabase } from '@/lib/supabase-log';
 import { MockSerialPort } from '@/lib/kwp/mock';
 import { DDE4, IDENT_SERVICES, LIVE_BLOCKS, liveBlockById, parseDtcResponse, OUTPUT_LABELS, EWS_VERIFY_TEXT } from '@/lib/kwp/dde4';
@@ -290,17 +291,9 @@ async function reportOperation(
   details: Record<string, unknown>,
   durationMs: number
 ): Promise<void> {
-  try {
-    const res = await fetch('/api/logs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operation, status, details, durationMs }),
-    });
-    if (res.ok) return;
-    // Server ohne DB-Konfiguration (503) → direkter Supabase-Fallback
-  } catch {
-    // Netzwerkfehler → ebenso Fallback
-  }
+  // v2.2.0: Native-App-Brücke zuerst (kein Netz), dann HTTP-API, dann Supabase
+  const nativeOk = await reportOperationLog({ operation, status, details, durationMs });
+  if (nativeOk) return;
   try {
     await reportOperationSupabase({
       operation,

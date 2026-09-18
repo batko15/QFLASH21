@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { saveKonfigsZipNatively } from '@/lib/kwp/native-api';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -171,7 +172,16 @@ export function UserConfigsPanel() {
             <a
               href="/downloads/DeepOBD-Konfigs-M57-M47.zip"
               download
-              onClick={() => setDownloaded(true)}
+              onClick={(e) => {
+                // App-Modus: ZIP nativ aus der APK nach Downloads/ kopieren
+                // (kein DownloadManager, kein Netz – die virtuelle App-Domain
+                // wäre für den DownloadManager nicht auflösbar).
+                if (saveKonfigsZipNatively('downloads/DeepOBD-Konfigs-M57-M47.zip',
+                        'DeepOBD-Konfigs-M57-M47.zip')) {
+                  e.preventDefault();
+                }
+                setDownloaded(true);
+              }}
               className="flex items-center"
             >
               <Download className="mr-2 h-4 w-4" aria-hidden />

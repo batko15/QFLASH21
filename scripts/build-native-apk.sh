@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 #
-# QFLASH21 – STANDALONE APK Build (v2.1.0, hand-assembliert, ohne Gradle).
+# QFLASH21 – STANDALONE APK Build (v2.2.0, hand-assembliert, ohne Gradle).
 #
-# Komplett eigenständige Android-App:
-#   - WebView + QfAssetServer: die GESAMTE Web-App liegt in apk-src/assets/www/
-#     und wird lokal über http://127.0.0.1:<Port> serviert (100 % offline).
+# Komplett eigenständige Android-App (Interceptor-Architektur):
+#   - WebView + QfAssetInterceptor: die GESAMTE Web-App liegt in apk-src/assets/www/
+#     und wird per WebViewClient.shouldInterceptRequest aus der APK bedient
+#     (virtuelle Domain https://appassets.androidplatform.net). KEIN Socket,
+#     KEIN Port, KEIN Cleartext, KEIN DNS – 100 % offline und immun gegen
+#     die v2.1.0-White-Screen-Ursache (Loopback-Server von der WebView-
+#     Netzwerkschicht nicht erreichbar).
+#   - QfNativeApi (window.QfNativeApi): lokale APIs, Downloads, Diagnostik.
 #   - SerialBridge: eigene USB-Serial-Treiberschicht (FTDI/CH340/CP2102) über
 #     die Android USB-Host-API – BREAK-Signal für 5-Baud-Init inklusive.
-#   - /api/logs + /api/analyze-dtc lokal in der App.
 #   KEINE externen Bibliotheken, KEIN browserhelper, KEIN Chrome/Net nötig.
 #   Nur android.jar + eigener Code.
 #
@@ -27,7 +31,7 @@ AJ="${AJ:-/home/z/android-build/tools/android-34/android.jar}"
 KS="${KS:-$SRC_DIR/qflash21-v12.keystore}"
 KS_ALIAS="qflash21"
 KS_PASS="${KS_PASS:-Qflash21-2026!Twa}"
-OUT_APK="${OUT_APK:-QFLASH21-v2.1.0.apk}"
+OUT_APK="${OUT_APK:-QFLASH21-v2.2.0.apk}"
 
 echo "==> 0/6 Standalone-Assets prüfen"
 if [ ! -f "$SRC_DIR/assets/www/index.html" ]; then
@@ -70,7 +74,7 @@ ls "$BUILD/dexout"
 # SICHERHEITSKLEMME 1: Alle nativen Klassen müssen im DEX vorhanden sein
 echo "==> 4b/6 DEX-Klassen-Verifikation"
 for cls in 'de/qflash21/app/MainActivity' 'de/qflash21/app/SerialBridge' \
-           'de/qflash21/app/QfAssetServer' \
+           'de/qflash21/app/QfAssetInterceptor' 'de/qflash21/app/QfNativeApi' \
            'de/qflash21/app/UsbSerialDriver' 'de/qflash21/app/FtdiDriver' \
            'de/qflash21/app/Ch340Driver' 'de/qflash21/app/Cp2102Driver' \
            'de/qflash21/app/QfApp' 'de/qflash21/app/CrashActivity'; do

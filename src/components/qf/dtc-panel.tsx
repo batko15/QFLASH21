@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useFlasher, VEHICLES } from '@/store/flasher';
+import { analyzeDtcHints } from '@/lib/kwp/native-api';
 import type { DtcEntry } from '@/lib/kwp/types';
 
 function exportTxt(
@@ -83,24 +84,19 @@ export function DtcPanel() {
     setAnalyzing(true);
     setAnalysis(null);
     try {
-      const res = await fetch('/api/analyze-dtc', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dtcs: [...dtcs, ...shadowDtcs].map((d) => ({
-            code: d.code,
-            description: d.description,
-            statusText: d.statusText,
-            sporadic: d.sporadic,
-            shadow: d.shadow,
-          })),
-          vehicle,
-          ecuType: ident?.ecuType ?? 'DDE4.0',
-        }),
-      });
-      const json = await res.json();
-      setAnalysis(json.analysis ?? 'Keine Analyse erhalten.');
-      if (json.source === 'fallback') {
+      const result = await analyzeDtcHints([...dtcs, ...shadowDtcs].map((d) => ({
+        code: d.code,
+        description: d.description,
+        statusText: d.statusText,
+        sporadic: d.sporadic,
+        shadow: d.shadow,
+      })));
+      if (!result) {
+        setAnalysis('Analyse nicht verfügbar (weder App-Brücke noch Dienst erreichbar).');
+        return;
+      }
+      setAnalysis(result.analysis ?? 'Keine Analyse erhalten.');
+      if (result.source === 'fallback') {
         toast.info('Offline-Hinweise angezeigt', { description: 'KI-Dienst nicht erreichbar.' });
       }
     } catch {

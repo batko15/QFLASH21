@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="de.qflash21.app"
-    android:versionCode="51"
-    android:versionName="2.1.0">
+    android:versionCode="52"
+    android:versionName="2.2.0">
 
   <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34"/>
 
@@ -19,21 +19,26 @@
       android:icon="@mipmap/ic_launcher"
       android:allowBackup="false"
       android:supportsRtl="true"
-      android:usesCleartextTraffic="true"
       android:theme="@android:style/Theme.Material.NoActionBar">
 
     <!--
-      v2.1.0 – STANDALONE (ersetzt v2.0.0 „Website im Netz"):
-      - QfAssetServer serviert die KOMPLETT EINGEBETTETE Web-App (assets/www/)
-        über http://127.0.0.1:<Port> → die App ist 100 % eigenständig:
-        kein Internet, keine Website, kein Chrome (Flugmodus OK).
-        usesCleartextTraffic="true" ist NUR für den lokalen Loopback-Server nötig.
-      - /api/logs (Operationshistorie) + /api/analyze-dtc (offline-Hinweise)
-        werden lokal im App-Speicher bedient.
+      v2.2.0 – STANDALONE mit Interceptor-Architektur (ersetzt v2.1.0):
+      - FIX für „App bleibt weiß": v2.1.0 servierte die Oberfläche über einen
+        Loopback-HTTP-Server (127.0.0.1:21921) – auf dem Gerät des Nutzers
+        erreichte die WebView-Netzwerkschicht diesen nie (Cleartext/localhost-
+        Restriktionen, VPN-/ROM-Interferenz) → weiße Fläche.
+      - NUN: WebViewClient.shouldInterceptRequest bedient die virtuelle Domain
+        https://appassets.androidplatform.net/ direkt aus der APK (offizielles
+        WebViewAssetLoader-Muster, ohne AndroidX). Kein Socket, kein Port,
+        kein Cleartext, kein DNS → keine Netzwerkschicht mehr im Spiel.
+      - QfNativeApi (window.QfNativeApi): lokale APIs (Operationshistorie,
+        DTC-Analyse), Downloads, Diagnostik, Clipboard.
+      - NIE WIEDER WEIẞ: onReceivedError/onReceivedHttpError → deutsche
+        Fehlerseite mit Diagnose + „Erneut versuchen"; Render-Watchdog;
+        onRenderProcessGone baut die WebView neu auf.
       - SerialBridge (window.QfSerialBridge): Android USB-Host-API für das
-        K+DCAN-Kabel (FTDI/CH340/CP2102) per USB-OTG – mit eigener
-        Treiberschicht inkl. BREAK-Signal für das 5-Baud-Init.
-      - Gleiche Paket-ID + Signatur wie v1.3.x/v2.0.0 → sauberes Upgrade
+        K+DCAN-Kabel (FTDI/CH340/CP2102) per USB-OTG – unverändert.
+      - Gleiche Paket-ID + Signatur wie v1.3.x/v2.0.0/v2.1.0 → sauberes Upgrade
       - QfApp: globaler Crash-Handler → nativer deutscher Fehlerbericht
     -->
     <activity
