@@ -403,3 +403,31 @@ Nächste Schritte:
 2. Falls Fehler: nativer Fehlerbericht („Fehler kopieren") → Bericht in den Chat
 3. Real-Device-Test FTDI-Init/BREAK-Timing (5-Baud) am Fahrzeug – ohne Hardware nur statisch verifizierbar
 4. DTC-Discovery (NickTullos) über 23 EDC15C4-Dumps; MWB-Live-Renderer (mw_select_lesen_norm)
+
+---
+Task ID: 13
+Agent: Z.ai Code (Hauptagent)
+Task: „Applikation soll selbstständig/standalone sein" – v2.1.0: KOMPLETTE Web-App ins APK eingebettet (100 % offline)
+
+Work Log:
+- Anforderung interpretiert: Nutzer will eine wirklich eigenständige App (Vergleich: „Probe-App hat z. B. 650 MB" – d. h. alles an Bord, keine Web-Abhängigkeit). v2.0.0 lud die Oberfläche noch von qflashk.vercel.app → bei fehlendem Internet tot und vom Stand der Website abhängig.
+- **QfAssetServer (NEU, apk-src/java/de/qflash21/app/QfAssetServer.java, ~520 Zeilen)**: lokaler HTTP/1.1-Server NUR auf 127.0.0.1, bevorzugt fester Port 21921–21925 (localStorage/Origin bleibt über App-Starts stabil), Thread-per-Connection, Pfad-Traversal-Schutz, MIME-Map, Cache-Control immutable für /_next/static, HEAD-Support, Connection: close. Implementiert die API ENTPRECHEND der Server-Routen lokal: POST/GET /api/logs (filesDir/operation-log.json, max. 500 Einträge, id/operation/status/vehicle/ecuType/details/durationMs/createdAt + stats-Shape wie Prisma groupBy), POST /api/analyze-dtc (Regeltabelle = identische Texte wie der FALLBACK_HINTS-Offline-Zweig der Produktion), /sw.js bewusst 404 (kein SW-Stale-Risiko), /apk/* → Info-Seite „Du bist bereits in der App".
+- **MainActivity umgestellt**: lädt http://127.0.0.1:<Port>/ statt der Website; URL-Allowlist nur Loopback (Rest → externer Browser); NEU DownloadListener → System-DownloadManager (DeepOBD-Konfigs-ZIP landet offline in Downloads/ – der DM erreicht den App-Loopback); USB-Detach/Crash-Handler unverändert.
+- **Manifest v2.1.0**: versionCode 51, usesCleartextTraffic="true" (nur Loopback relevant), Auto-Verify-Deep-Link-Filter ENTFERNT (Loop-Gefahr bei Standalone).
+- **scripts/snapshot-site.sh (NEU)**: spiegelt die Produktionssite in apk-src/assets/www/ – Fixpunkt-Crawler über absolute UND relative Turbopack-Chunk-Referenzen (Turbopack: _next/static/immutable/chunks/, Runtime referenziert Chunks ohne führenden Slash), 8 Chunks + CSS + index.html + Icons + manifest.json + DeepOBD-ZIP = 18 Dateien/11 MB; danach Versions-Patch v2.0.0→v2.1.0 (Footer, APK-URL, System-Check-Texte) mit Rest-Prüfung (0 Treffer für „2.0.0"). Merkfälle: Turbopack-Layout (`immutable/chunks`), grep -o liefert Pfade ohne führenden Slash, /manifest.js war Phantom-Match von manifest.json (404 in Produktion – harmlos).
+- **Build-Script erweitert** (build-native-apk.sh): aapt2 link -A assets, Build-Checks: assets/www vorhanden (≥10 Dateien), 9 DEX-Klassen (inkl. QfAssetServer), im APK: index.html + ≥8 _next-Dateien + Konfigs-ZIP. Compile-Fixes: JSONException-Handling in handleLogsGet (checked), setup() throws IOException.
+- **APK FINAL: QFLASH21-v2.1.0.apk, 9.255.338 Bytes (9,0 MB)** – Signatur SHA-256 6c62fd… (identisch zu v1.3.x/v2.0.0 → Upgrade ohne Deinstallation), badging: de.qflash21.app v51 2.1.0, launchable MainActivity. Forensisch verifiziert: alle 18 Asset-Dateien im APK, Footer-String „v2.1.0 · Standalone Android-App (100 % offline)" und Chunk „QFLASH21-v2.1.0.apk"/„(Standalone, ~9 MB)" im APK, 0 „2.0.0"-Reste.
+- **Web v2.1.0**: Footer „Standalone-Android-App (100 % offline)", System-Check: APP_VERSION 2.1.0, APK-URL v2.1.0, Verdict „Bereit – Standalone-App (USB-Host-API, 100 % offline)", APK-Card „Android-App (Standalone) v2.1.0" mit eingebettet-Hinweis + „Flugmodus OK", Install-Schritte aktualisiert. Lint 0/0, dev.log sauber, agent-browser E2E lokal: Footer + System-Check-Texte korrekt, 0 Konsolenfehler; docs/screenshots/08-system-check.png aktualisiert.
+- **Repo-Hygiene**: apk-src/build-native/ (Build-Artefakte) und apk-src/assets/ (Snapshot, regenerierbar) aus Git entfernt + .gitignore; README.md Android-Sektion + apk/README.md komplett auf v2.1.0 Standalone umgeschrieben (Architektur, 2-Schritt-Build, Warumb, Installation).
+- Commit e81510a (lokal). **PUSH/RELEASE OFFEN**: kein GitHub-Token in der Umgebung (Remote wurde nach dem letzten One-Shot-Push entfernt) → Production (Vercel) zeigt noch v2.0.0, Release v2.1.0 + APK-Upload ausstehend, sobald Token vorliegt.
+
+Stage Summary:
+- QFLASH21 v2.1.0 ist eine KOMPLETT eigenständige Android-App: die gesamte Oberfläche + alle Daten (inkl. DeepOBD-Konfigs-ZIP) sind ins APK eingebettet (9,0 MB), served lokal über 127.0.0.1 – kein Internet, kein Chrome, keine Website, funktioniert im Flugmodus. Operationshistorie + DTC-Analyse laufen lokal in der App.
+- Upgrade-Pfad: v2.1.0 installiert direkt über v2.0.0/v1.3.x (gleiche Signatur 6c62fd…, versionCode 51).
+- AUSSTEHEND (braucht Nutzer-Token): 1) `git push` + GitHub Release v2.1.0 mit APK-Asset, 2) Vercel-Deploy der v2.1.0-Weboberfläche, 3) Prüfen, dass https://qflashk.vercel.app/apk/QFLASH21-v2.1.0.apk dann 200 liefert.
+
+Nächste Schritte:
+1. Token anfordern → push + Release v2.1.0 + Produktionsverifikation
+2. Realtest am Fahrzeug: v2.1.0 installieren → Flugmodus → App startet offline → K+DCAN per OTG → 5-Baud-Init
+3. Falls Fehler: nativer Fehlerbericht („Fehler kopieren") hier einfügen
+4. DTC-Discovery (NickTullos, 23 EDC15C4-Dumps) + MWB-Live-Renderer
