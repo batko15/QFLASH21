@@ -104,3 +104,32 @@ Nächste Schritte:
 4. Feature-Ideen: DTC-Clear in Historie markieren, BIN-Diff-Viewer, Live-Gauges
 
 ---
+Task ID: 4
+Agent: Z.ai Code (Hauptagent)
+Task: Massive App-/Repo-Erweiterung + Fehler Suche („optimiere die app, erweitere massiv, suche nach fehler, github deep search")
+
+Work Log:
+- Deep-Research (GitHub API + Web): KWP2000/EDC15-Referenzen gesichtet (ecu_diagnostics, KLineKWP1281Lib, ISO14230-Projekte); TesterPresent/Session-Timeout-Verhalten (ISO 14230-3) verifiziert.
+- **Feature: Live-Daten Komplettumbau** – SVG-Kreuzzeiger-Gauges (240°-Bogen, Warnbereiche) für Drehzahl/°C/mbar/V, Sparkline-Verläufe (letzte 120 Messpunkte, SVG polyline), Sitzungs-Aufzeichnung (bis 1500 Frames) mit CSV-Export (Semikolon, Excel-kompatibel), Grenzwert-Badges.
+- **Feature: BIN-Diff-Viewer** (neuer Card im Lesen/Schreiben-Tab) – zwei beliebige Images (ECU-Backup/Upload/Datei) bytegenau vergleichen: geänderte Bytes, Regionen mit alter→neuer Hex-Vorschau, 16-KiB-Bank-Zuordnung, Schutz-Zonen-Check (nur FULL-Images), max. 300 Regionen im Scroll-Panel.
+- **Feature: KWP2000-TesterPresent-KeepAlive** (0x3E alle 3 s, pausiert bei busy/livePolling/mock) – 2× Timeout = Session-Verlust → Disconnect-Erkennung + **Auto-Reconnect** über zuletzt genutzten Port (max. 3 Versuche, Backoff 2-3 s), Buffer-Flush (drainInitAck) nach Fehlern gegen Buffer-Poisoning.
+- **Feature: Einstellungs-Persistenz** (localStorage: Baudrate, Fahrzeug, Auto-Reconnect), SSR-sicher mit try/catch.
+- **Feature: PWA-Update-Toast** – SW-Update erkannt → Toast mit „Neu laden"-Aktion.
+- **Feature: DTC-DB erweitert** (30 → 37 Einträge): Glühkerzen Zyl. 2–6, Ladedruckregelventil N75 (17966), Ladedrucksensor (17967).
+- **BUG #1 (realer Dekodierfehler)**: Ladedruck Block 0x03 – Parser ×10 + Mock-Bytes 0x0960 → 24000 mbar (24 bar, unrealistisch). Fix: 1 LSB = 1 mbar absolut (kein Faktor), Mock-Leerlauf ~1050 mbar dynamisch. Browser-verifiziert: 1036–1079 mbar lokal, 1043 mbar auf Produktion.
+- **BUG #2 (SW-Dusch-Falle)**: Service Worker cache-first fror Dev-Chunks über Server-Restarts ein (Stale-Code trotz Clean-Rebuild). Fix: SW-Registrierung nur in Produktion (NODE_ENV-Check) + Cache-Version v2 (activate löscht alte Versionen).
+- **BUG #3 (UX-Logik)**: Schutz-Zonen-Warnung im Diff feuerte bei CAL-Images (48 KiB) fälschlich „BERÜHRT!" – Check jetzt auf FULL-Images (512 KiB) beschränkt, CAL zeigt Bildtyp-Info.
+- Screenshots aktualisiert (06-live-daten mit Gauges, 07-flash mit Diff-Viewer).
+- Lint 0/0, tsc sauber, E2E lokal (Simulator → Gauges → Recording 8 Frames/5 s → CSV-Klick, Diff 111 Bytes/3 Regionen/Banken 0,1,2) und auf Produktion.
+
+Stage Summary:
+- **Produktion aktualisiert & verifiziert**: https://qflashk.vercel.app – neue Live-Gauges (Ladedruck 1043 mbar korrekt), Aufzeichnen-Button, BIN-Diff-Viewer sichtbar, Simulator-Verbindung grün.
+- QFLASH21 deckt jetzt ab: Ident, DTC (37 Codes), Live-Gauges + Recording/CSV, Flash lesen/schreiben/löschen, CR2-Prüfsummen, BIN-Diff, KeepAlive/Auto-Reconnect, Operationshistorie (Supabase), PWA + APK.
+- Restrisiken: KeepAlive/Reconnect nur gegen Simulator logisch getestet (Realtest am Fahrzeug ausstehend); GitHub-Actions weiterhin durch Billing-Sperre blockiert.
+
+Nächste Schritte:
+1. Fahrzeug-Realtest (KeepAlive-Verhalten + Auto-Reconnect live erleben)
+2. Kennfeld-Raster-Viewer (Heatmap über CAL-Bereich) + AGR-Testroutine (0x31) wenn Doku vorliegt
+3. GitHub-Billing klären → CI-APK-Build aktivieren
+
+---
