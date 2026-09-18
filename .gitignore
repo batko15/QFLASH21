@@ -54,3 +54,12 @@ apk-src/dexout/
 apk-src/*.keystore
 apk/out/
 tool-results/
+
+# APK-Build-Artefakte (nur Quellen bleiben im Repo)
+apk-src/*.apk
+apk-src/*.idsig
+apk-src/compiled/
+apk-src/out/
+apk-src/base.apk
+apk-src/dexout/
+apk-src/classes/
