@@ -351,3 +351,30 @@ Nächste Schritte:
 2. Adaption-Lesen (ABGLEICH_LESEN_AGR_RUECK/LL_REGELUNG) als gefahrlose UI-Aktion im Jobs-Panel anbieten (Schreib-Jobs bleiben gesperrt).
 3. DTC-Discovery (NickTullos-Methode) über die 23 EDC15C4-Dumps → echte ORT-Texttabelle.
 4. Nutzer-Feedback zu APK v1.3.0 + System-Check einholen.
+---
+Task ID: 11
+Agent: Z.ai Code (Hauptagent)
+Task: „App installiert, startet und schließt sofort" – Deep-Forensik + APK-Fix
+
+Work Log:
+- **Root Cause forensisch bewiesen** (nicht geraten): final auf Produktion gezogene APK zerlegt → `aapt dump badging`: launchable-activity = `de.qflash21.app.MainActivity`; dexdump des classes.dex: Klasse existiert nur als `de.qflash21.launcher.MainActivity` (v1.2.0-Package). Manifest/Package-Umstellung in v1.3.0 wurde nicht an der Java-Klasse nachgezogen → ClassNotFoundException beim Start → sofortiger Absturz. Zusätzlich gefunden: ecj.jar (Eclipse-Compiler) war über `$LIBS/*.jar`-Glob fälschlich ins DEX gelangt (6,5 MB classes.dex, 45k org/eclipse-Referenzen).
+- **Fix v1.3.1 (versionCode 41, versionName 1.3.1):** MainActivity/QfApp/CrashActivity in `apk-src/java/de/qflash21/app/` neu erstellt (altes launcher-Package gelöscht, stale build-Ordner entfernt). Gleiche Signatur 6c62fd wie installierte v1.3.0 → Upgrade ohne Deinstallation (bewusst KEIN Keystore-Wechsel, sonst erneuter Installations-Block).
+- **Robustheit 1 – nie wieder stummer Crash:** `QfApp` (Application) installiert globalen UncaughtExceptionHandler → startet native `CrashActivity`: deutscher Bericht mit Stacktrace + Geräteinfo (Hersteller/Modell/Android/API/Version), Buttons „Fehler kopieren" (Clipboard), „In Chrome öffnen" (Paket-Intent mit generischem Fallback), „App neu starten", „Beenden". Bewusst ohne androidx, damit sie im Crashfall garantiert läuft. Anti-Loop-Guard + verzögertes killProcess (700 ms) damit Bericht ankommt.
+- **Robustheit 2 – App schließt nie:** FALLBACK_STRATEGY=webview + `WebViewFallbackActivity` deklariert (vorher customtabs): ohne Chrome/ohne DAL-Verifikation öffnet eingebetteter WebView statt Abbruch (Web Serial dort zwar nicht, aber UI + Hinweise sichtbar).
+- **Build-Skript gehärtet:** 1) explizite d8-Input-Liste ohne ecj.jar (Prüfung auf Existenz jedes Jars), 2) DEX-Klassen-Verifikation nach d8 (MainActivity/QfApp/CrashActivity/LauncherActivity – bricht Build ab, exakt der v1.3.0-Fehlerklasse), 3) Bugfix dabei entdeckt & dokumentiert: `grep -q` unter `set -o pipefail` → SIGPIPE(141)-Falle bei Early-Exit → Verifikation griff zunächst fälschlich; jetzt grep ohne -q.
+- **Verifikation:** Build grün; dexdump des finalen APK: alle 3 App-Klassen + LauncherActivity + WebViewFallbackActivity (90 Refs) im DEX; badging: versionCode 41, launchable de.qflash21.app.MainActivity; apksigner: SHA-256 6c62fd… (identisch zu installierter v1.3.0); APK 2,6 MB → **1,5 MB**; tsc 0 Fehler, eslint 0/0.
+- **Distribution:** `public/apk/QFLASH21-v1.3.1.apk` + `apk/QFLASH21-v1.3.1.apk` (v1.3.0-Dateien entfernt), Commit fc08fd5 + UI-Feinschliff 4ade412 gepusht (Einmal-Token-URL, Remote bereinigt), **GitHub Release v1.3.1** (ID 391543183) mit APK-Asset. Produktion verifiziert: APK HTTP 200 mit exakter Länge 1.486.777 B, Homepage/Footer v1.3.1, assetlinks.json beide Paket-IDs mit passendem Fingerprint.
+- **agent-browser E2E:** Produktion geöffnet, System-Check-Tab: „Android-App (TWA) v1.3.1", Download-Link „APK v1.3.1 herunterladen (arm64, 1,5 MB)", neue Installationsschritte (Upgrade-Hinweis v1.3.0→v1.3.1, MagicOS Pure Mode, Fehlerbericht-Hinweis). Screenshot: /tmp/qf-systemcheck-131.png.
+- Doku: README.md (Android-Sektion), apk/README.md (Fehler-Chronik-Tabelle mit v1.3.0-Absturzursache, Build-Klemmen-Doku, neue Quellcode-Liste), footer.tsx + system-check-panel.tsx auf 1.3.1.
+
+Stage Summary:
+- „Startet und schließt sofort" ist an der WURZEL behoben (fehlende MainActivity-Klasse im DEX) – nicht nur symptomatisch. Drei Verteidigungslinien neu: korrekte Klasse, DEX-Buildklemme, nativer Fehlerbericht + WebView-Fallback.
+- Erwartung an Nutzer: APK v1.3.1 herunterladen (https://qflashk.vercel.app/apk/QFLASH21-v1.3.1.apk oder GitHub Release) → über die installierte v1.3.0 drüber installieren → Icon antippen → App MUSS jetzt in Chrome-Engine öffnen. Falls doch etwas schiefgeht: der neue Fehlerbericht zeigt den Grund in Deutsch + „Fehler kopieren" → Bericht in den Chat.
+- Alte Apps (Paket-ID de.qflash21.launcher, v1.0–v1.2) danach deinstallieren (nur 1 QFLASH21-Icon behalten).
+
+Nächste Schritte:
+1. Nutzer-Feedback zu v1.3.1 abwarten (Start + System-Check-Screenshot/Bericht)
+2. DTC-Discovery (NickTullos-Methode) über 23 EDC15C4-Dumps → echte DDE4-Fehlernummern-Tabelle
+3. MWB-Sets live: Job-Renderer für mw_select_lesen_norm (Args → KWP → positionsgebundene Dekodierung + Schwellenfarben)
+4. Adaption-LESEN als gefahrlose UI-Aktion im Jobs-Panel (Schreib-Jobs bleiben gesperrt)
+5. GitHub-PAT + Supabase-Passwort rotieren (offengelegt) – Nutzer-Hinweis
