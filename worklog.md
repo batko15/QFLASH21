@@ -378,3 +378,28 @@ Nächste Schritte:
 3. MWB-Sets live: Job-Renderer für mw_select_lesen_norm (Args → KWP → positionsgebundene Dekodierung + Schwellenfarben)
 4. Adaption-LESEN als gefahrlose UI-Aktion im Jobs-Panel (Schreib-Jobs bleiben gesperrt)
 5. GitHub-PAT + Supabase-Passwort rotieren (offengelegt) – Nutzer-Hinweis
+---
+Task ID: 12
+Agent: Z.ai Code (Hauptagent)
+Task: „funktioniert immer noch nicht → richtige Android-App oder lass es sein" – NATIVE APP v2.0.0 + Repo-Fotos
+
+Work Log:
+- **Architekturwechsel TWA → NATIVE APP** (Entscheidung: TWA-Kette Chrome/Custom-Tabs/assetlinks war die wiederkehrende Fehlerquelle): WebView-Activity + `SerialBridge` (`addJavascriptInterface("QfSerialBridge")`) exponiert die **Android USB-Host-API** direkt an die Web-App – kein Chrome, keine Web-Serial-API, keine Domain-Verifizierung mehr nötig.
+- **8 Java-Klassen** (apk-src/java/de/qflash21/app/, reine Framework-APIs, KEINE externen Bibliotheken): MainActivity (WebView, URL-Restriktion qflashk.vercel.app, USB-Detach-Broadcast → `qf-usb-detach`-Event an die Seite), SerialBridge (listDevices/requestAndOpen/write/read/setBreak/close als JSON-Base64-API, USB-Berechtigung per Broadcast-Latch 20 s, RX-Pump-Thread mit 64-KB-Ringpuffer drop-oldest, FTDI/CH340-Status-Byte-Stripping), UsbSerialDriver (Basis + Fabrik + Endpunkt-Erkennung + Treiber-Mathematik), FtdiDriver (SIO 0x00/0x01/0x02/0x03/0x04/0x09, BREAK=SET_DATA Bit 14, Divisor {0,3,2,4,1,5,6,7}), Ch340Driver (0x5F Version, 0xA1 INIT, 0x9A/0x1312 Divisor+0x80-Bit>0x27, 0x2518 LCR≥0x30, 0xA4 DTR/RTS, BREAK-Registerpaar 0x95/0x1805), Cp2102Driver (0x1E Baud u32-LE, 0x03 LINE_CTL, 0x07 MHS, 0x12 PURGE, 0x16 BREAK), QfApp + CrashActivity (unverändert, Fehlerbericht).
+- Alle Treiberwerte 1:1 aus src/lib/kwp/webusb-serial.ts übernommen (beide aus Linux-Kernel portiert) → Web- und Native-Pfad verhalten sich identisch.
+- **Build-Pipeline scripts/build-native-apk.sh**: ohne AARs (nur android.jar), aapt2→ecj→d8→DEX-Klassenverifikation (8 Klassen)→zipalign→apksigner. Build-Fixes: fehlende Usb-Imports in Subklassen, ctrlOut-2-Arg-Overload, ACTION_USB_PERMISSION-Konstante nach SerialBridge, Boolean-Typ. Ergebnis: **QFLASH21-v2.0.0.apk, 99 KB**, versionCode 50, Signatur 6c62fd (identisch zu v1.3.x → Upgrade ohne Deinstallation), launchable de.qflash21.app.MainActivity, alle 8 Klassen im DEX verifiziert.
+- **Web-Integration:** src/lib/kwp/native-bridge.ts (isNativeBridge/listNativeDevices/requestNativeDevice/NativeBridgeSerialPort mit ReadableStream-Pump 4 ms-Polling + WritableStream + setSignals(break) + qf-usb-detach-Handling); Store connectReal: Pfadkette **Native → Web Serial → WebUSB** (lastPortPath 'native', pathNote ' · Native-App'); System-Check: neue Prüfung „Native Android-App", Verdict „Bereit – Native-App-Modus (USB-Host-API)", APK-Karte auf Nativ v2.0.0 (~100 KB) umgeschrieben, Diagnose-Bericht um Native-Bridge-Zeile erweitert; Footer v2.0.0.
+- **Repo-Fotos (Nutzeranforderung „mit allen Fotos"):** 12 frische agent-browser-Screenshots (Desktop 1440×900: Übersicht/Verbindung/ECU-ID mit Simulator-Daten/Fehlerspeicher mit echten DTC 00025+17964+00087/Live-Daten/Jobs/DDE4-Konfigs/System-Check/Lesen-Schreiben/Protokoll; Mobile 390×844: Übersicht + System-Check) → docs/screenshots/ (alte Namen befüllt + neue 07-konfigs/08-system-check/09-lesen-schreiben/12-mobil-system-check), README-Galerie erweitert, alle 9 Inline-Referenzen zeigen jetzt frische Bilder. Dev-Overlay aus Screenshots entfernt.
+- README: Android-Sektion komplett neu (Architektur-Diagramm ASCII, Native-Pfad-Erklärung, Legacy v1.3.1-Fallback); apk/README.md: v2.0.0-Sektion + Legacy-Chronik.
+- Qualität: tsc 0 Fehler, eslint 0/0. Deploy: Commit 705be72 → GitHub; **Release v2.0.0** (ID 391573116) mit APK-Asset; Produktion verifiziert (APK 200 mit exakter Länge 99.137 B, Footer v2.0.0, System-Check zeigt „Native Android-App" + „Android-App (Nativ) v2.0.0" + Download-Link). agent-browser E2E auf Produktion bestätigt.
+
+Stage Summary:
+- QFLASH21 hat jetzt eine ECHTE native Android-App (v2.0.0): Das K+DCAN-Kabel läuft nativ über die Android USB-Host-API – vollständig unabhängig von Chrome-Version, Web-Serial-Verfügbarkeit und TWA-Verifikation. Die drei vorherigen Ausfallursachen (Signatur, DEX-Klasse, TWA-Abhängigkeiten) sind strukturell eliminiert.
+- Download: https://qflashk.vercel.app/apk/QFLASH21-v2.0.0.apk · GitHub Release v2.0.0 · Upgrade über installierte v1.3.x direkt möglich.
+- Repo mit 12 frischen Screenshots (Desktop+Mobile) und aktualisierter Doku live auf GitHub.
+
+Nächste Schritte:
+1. Nutzer: v2.0.0 installieren → Kabel anschließen → „Verbinden" → USB-Berechtigung → System-Check „Native-App-Modus" grün
+2. Falls Fehler: nativer Fehlerbericht („Fehler kopieren") → Bericht in den Chat
+3. Real-Device-Test FTDI-Init/BREAK-Timing (5-Baud) am Fahrzeug – ohne Hardware nur statisch verifizierbar
+4. DTC-Discovery (NickTullos) über 23 EDC15C4-Dumps; MWB-Live-Renderer (mw_select_lesen_norm)
