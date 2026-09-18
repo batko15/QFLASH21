@@ -1,0 +1,55 @@
+{
+  "id": "qflash21-dde4",
+  "name": "QFLASH21 – DDE4 Diagnose & Flash",
+  "short_name": "QFLASH21",
+  "description": "Lokales Diagnose- und Flash-Tool für BMW DDE4 (EDC15C4) über K-Line / KWP2000 mit Web Serial – für E38, E39, E46 und E53.",
+  "lang": "de",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#09090b",
+  "theme_color": "#18181b",
+  "categories": ["utilities", "automotive"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Verbindung herstellen",
+      "short_name": "Verbinden",
+      "url": "/?tab=verbindung",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Fehlerspeicher",
+      "short_name": "Fehler",
+      "url": "/?tab=fehlerspeicher",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

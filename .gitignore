@@ -1,9 +1,45 @@
-node_modules
-.next
-out
-build
-*.log
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+.next/
+out/
+build/
+dist/
+tsconfig.tsbuildinfo
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# Database (SQLite lokal)
+db/
+*.db
+*.db-journal
+*.sqlite
+
+# Logs
 dev.log
-db/*.db
-db/*.db-journal
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor / OS
+.vscode/
+.idea/
 .DS_Store
+Thumbs.db
+
+# Agent/Tooling (lokal, nicht Teil der App)
+skills/
+download/
+tmp/
+*.tsbuildinfo
+
+# Sensible Dateien niemals committen
+*token*
+*credential*

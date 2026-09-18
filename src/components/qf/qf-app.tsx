@@ -17,6 +17,7 @@ import { FlashPanel } from '@/components/qf/flash-panel';
 import { ChecksumPanel } from '@/components/qf/checksum-panel';
 import { LogPanel } from '@/components/qf/log-panel';
 import { QfFooter } from '@/components/qf/footer';
+import { SwRegister, InstallPwaButton } from '@/components/qf/pwa';
 import { cn } from '@/lib/utils';
 
 const TABS = [
@@ -31,7 +32,17 @@ const TABS = [
 ];
 
 export function QfApp() {
-  const [tab, setTab] = useState('uebersicht');
+  // ?tab=… aus URL (PWA-Shortcuts) hydration-sicher: erst nach Hydration aktiv
+  const urlTab = useSyncExternalStore(
+    () => () => {},
+    () => {
+      const t = new URLSearchParams(window.location.search).get('tab');
+      return t && TABS.some((x) => x.value === t) ? t : null;
+    },
+    () => null
+  );
+  const [tabState, setTab] = useState<string | null>(null);
+  const tab = tabState ?? urlTab ?? 'uebersicht';
   const connection = useFlasher((s) => s.connection);
   const isMock = useFlasher((s) => s.isMock);
   const initSupport = useFlasher((s) => s.initSupport);
@@ -44,6 +55,7 @@ export function QfApp() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <SwRegister />
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -65,6 +77,7 @@ export function QfApp() {
               <Wifi className="mr-1 h-3 w-3" aria-hidden />
               {connected ? (isMock ? 'Simulator' : 'Verbunden') : 'Offline'}
             </Badge>
+            <InstallPwaButton />
             <ThemeToggle />
           </div>
         </div>

@@ -56,7 +56,8 @@ export function ConnectionPanel() {
   async function handleConnect() {
     if (!supported) {
       toast.error('Web Serial nicht verfügbar', {
-        description: 'Chrome/Edge ≥ 89 erforderlich. iOS/Safari wird nicht unterstützt.',
+        description:
+          'Android: Chrome ≥ 138 erforderlich. Desktop: Chrome/Edge ≥ 89. iOS/Safari wird nicht unterstützt.',
       });
       return;
     }
@@ -199,7 +200,8 @@ export function ConnectionPanel() {
               <li className="flex gap-3">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">2</span>
                 <span>
-                  <strong>Chrome öffnen</strong> (ab Version 89), diese Seite aufrufen – Web Serial funktioniert nur dort.
+                  <strong>Chrome öffnen</strong> (Android: ab Version 138, Desktop: Chrome/Edge 89+) – Web Serial
+                  funktioniert nur dort und nur über HTTPS.
                 </span>
               </li>
               <li className="flex gap-3">

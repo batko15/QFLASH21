@@ -10,11 +10,26 @@ export const metadata: Metadata = {
     'Lokales Diagnose- und Flash-Tool für BMW DDE4 (EDC15C4): ECU-Identifikation, Fehlerspeicher, Live-Daten und BIN-Verwaltung per Web Serial / K-Line. Für E38, E39, E46 und E53.',
   applicationName: 'QFLASH21',
   keywords: ['BMW', 'DDE4', 'EDC15', 'KWP2000', 'K-Line', 'Web Serial', 'Chiptuning', 'Diagnose'],
+  manifest: '/manifest.json',
+  icons: {
+    icon: [
+      { url: '/favicon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'QFLASH21',
+    statusBarStyle: 'black-translucent',
+  },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#fafaf9' },
     { media: '(prefers-color-scheme: dark)', color: '#18181b' },
