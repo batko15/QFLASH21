@@ -1,0 +1,9 @@
+/home/z/my-project/apk-src/java/de/qflash21/app/Ch340Driver.java
+/home/z/my-project/apk-src/java/de/qflash21/app/CrashActivity.java
+/home/z/my-project/apk-src/java/de/qflash21/app/MainActivity.java
+/home/z/my-project/apk-src/java/de/qflash21/app/UsbSerialDriver.java
+/home/z/my-project/apk-src/java/de/qflash21/app/QfApp.java
+/home/z/my-project/apk-src/java/de/qflash21/app/FtdiDriver.java
+/home/z/my-project/apk-src/java/de/qflash21/app/SerialBridge.java
+/home/z/my-project/apk-src/java/de/qflash21/app/Cp2102Driver.java
+/home/z/my-project/apk-src/build-native/gen/de/qflash21/app/R.java

@@ -36,10 +36,11 @@ import {
 import {
   WEBUSB_FILTERS,
 } from '@/lib/kwp/webusb-serial';
+import { isNativeBridge, listNativeDevices, type QfNativeDeviceInfo } from '@/lib/kwp/native-bridge';
 
 /** Aktuelle Web-App-Version (parallel zur APK-Version halten) */
-const APP_VERSION = '1.3.1';
-const APK_URL = '/apk/QFLASH21-v1.3.1.apk';
+const APP_VERSION = '2.0.0';
+const APK_URL = '/apk/QFLASH21-v2.0.0.apk';
 
 type Status = 'ok' | 'warn' | 'fail' | 'info';
 
@@ -53,6 +54,7 @@ interface CheckRow {
 interface EnvSnapshot {
   serial: boolean;
   webusb: boolean;
+  native: boolean;
   secure: boolean;
   ua: string;
   chromeVersion: number | null;
@@ -80,6 +82,7 @@ function readEnv(): EnvSnapshot | null {
   return {
     serial: 'serial' in navigator,
     webusb: 'usb' in navigator,
+    native: isNativeBridge(),
     secure: window.isSecureContext,
     ua,
     chromeVersion: m ? Number(m[1]) : null,
@@ -100,6 +103,7 @@ export function SystemCheckPanel() {
   );
   const [grantedSerial, setGrantedSerial] = useState<string[]>([]);
   const [grantedUsb, setGrantedUsb] = useState<string[]>([]);
+  const [nativeDevices, setNativeDevices] = useState<QfNativeDeviceInfo[]>([]);
   const [scanned, setScanned] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -107,6 +111,13 @@ export function SystemCheckPanel() {
 
   const scanGranted = useCallback(async () => {
     const out: { serial: string[]; usb: string[] } = { serial: [], usb: [] };
+    try {
+      if (isNativeBridge()) {
+        setNativeDevices(await listNativeDevices());
+      }
+    } catch {
+      /* ignore */
+    }
     try {
       const s = (navigator as unknown as {
         serial?: { getDevices(): Promise<{ productName?: string; vendorId?: number; productId?: number }[]> };
@@ -160,6 +171,14 @@ export function SystemCheckPanel() {
   const anyUsbPath = usbSerialNative || usbViaWebUsb;
 
   const rows: CheckRow[] = [
+    {
+      label: 'Native Android-App',
+      detail: env.native
+        ? 'QFLASH21-App v2 erkannt – native USB-Serial-Bridge aktiv (kein Chrome nötig)'
+        : 'Nicht in der App geöffnet – Web-Pfade aktiv (APK v2 empfohlen)',
+      status: env.native ? 'ok' : 'info',
+      icon: Smartphone,
+    },
     {
       label: 'Web Serial API',
       detail: env.serial
@@ -221,7 +240,13 @@ export function SystemCheckPanel() {
     },
   ];
 
-  const verdict: { status: Status; title: string; text: string } = !env.secure
+  const verdict: { status: Status; title: string; text: string } = env.native
+    ? {
+        status: 'ok',
+        title: 'Bereit – Native-App-Modus (USB-Host-API)',
+        text: 'QFLASH21-App v2 erkannt: Das K+DCAN-Kabel läuft NATIV über die Android USB-Host-API (FTDI/CH340/CP2102) – unabhängig von Chrome-Version. Kabel anschließen und „Verbinden“ tippen.',
+      }
+    : !env.secure
     ? {
         status: 'fail',
         title: 'Kein sicherer Kontext',
@@ -231,7 +256,7 @@ export function SystemCheckPanel() {
       ? {
           status: 'fail',
           title: 'Kein USB-Serial-Pfad verfügbar',
-          text: 'Google Chrome installieren (Play Store) und diese Seite darin öffnen – oder die QFLASH21-APK v1.3.1 installieren.',
+          text: 'Die QFLASH21-APK v2.0.0 installieren (nativ, kein Chrome nötig) – oder Google Chrome und diese Seite darin öffnen.',
         }
       : env.serial && usbSerialNative
         ? {
@@ -309,9 +334,14 @@ export function SystemCheckPanel() {
           {scanned && (
             <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
               <p className="font-medium text-foreground">Erlaubte Geräte</p>
+              {env.native && (
+                <p>
+                  Native-App: {nativeDevices.length ? nativeDevices.map((d) => `${d.name} (${d.driver})`).join(' · ') : 'kein Adapter angeschlossen'}
+                </p>
+              )}
               <p>Serial: {grantedSerial.length ? grantedSerial.join(' · ') : 'keine'}</p>
               <p>USB: {grantedUsb.length ? grantedUsb.join(' · ') : 'keine'}</p>
-              {!grantedSerial.length && !grantedUsb.length && (
+              {!grantedSerial.length && !grantedUsb.length && !nativeDevices.length && (
                 <p className="mt-1">
                   Noch kein Gerät erlaubt? Kabel anschließen und im Tab „Verbindung“ auf
                   Verbinden tippen – der Browser fragt dann nach dem Adapter.
@@ -325,36 +355,40 @@ export function SystemCheckPanel() {
       {/* APK-Sektion */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Android-App (TWA) v{APP_VERSION}</CardTitle>
+          <CardTitle className="text-base">Android-App (Nativ) v{APP_VERSION}</CardTitle>
           <CardDescription>
-            Vollbild-Chrome mit Web-Serial – die empfohlene Art, QFLASH21 am Handy zu nutzen.
+            Echte App mit eigener USB-Treiberschicht (FTDI/CH340/CP2102) – funktioniert
+            OHNE Chrome und OHNE Web Serial auf jedem Android-Gerät ab 7.0.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <Button asChild>
             <a href={APK_URL} download>
               <Download className="mr-2 h-4 w-4" aria-hidden />
-              APK v{APP_VERSION} herunterladen (arm64, 1,5 MB)
+              APK v{APP_VERSION} herunterladen (nativ, ~100 KB)
             </a>
           </Button>
           <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground">
             <li>
               <strong className="text-foreground">APK herunterladen und öffnen</strong>{' '}
-              (Dateimanager → Downloads). v1.3.1 installiert direkt über eine vorhandene
-              v1.3.0 (gleiche Signatur) – alte QFLASH21-Apps (v1.0–v1.2) können danach
-              deinstalliert werden.
+              (Dateimanager → Downloads). v2.0.0 installiert direkt über v1.3.x (gleiche
+              Signatur) – alte QFLASH21-Apps (v1.0–v1.2, andere Paket-ID) danach deinstallieren.
             </li>
             <li>
               MagicOS: Bei „Aus unbekannter Quelle installieren?“ den Browser/Dateimanager
               <strong className="text-foreground"> erlauben</strong> – oder vorher
               Einstellungen → Sicherheit → Pure Mode deaktivieren.
             </li>
-            <li>Chrome muss installiert sein (die App rendert darin – Web Serial!).</li>
-            <li>App öffnen → dieser System-Check muss grün zeigen.</li>
+            <li>
+              <strong className="text-foreground">Kein Chrome nötig:</strong> Die App spricht
+              das K+DCAN-Kabel direkt über die Android USB-Host-API an (Kabel per USB-OTG
+              anschließen – beim ersten Mal USB-Berechtigung bestätigen).
+            </li>
+            <li>App öffnen → dieser System-Check zeigt „Native-App-Modus“ (grün).</li>
             <li>
               Sollte die App je Fehler zeigen: Der native{' '}
-              <strong className="text-foreground">Fehlerbericht</strong> (neu in v1.3.1)
-              erscheint mit „Fehler kopieren“-Button – Bericht einfach hier einfügen.
+              <strong className="text-foreground">Fehlerbericht</strong> erscheint mit
+              „Fehler kopieren“-Button – Bericht einfach hier einfügen.
             </li>
           </ol>
         </CardContent>
@@ -430,6 +464,7 @@ function buildReport(
     `Browser: ${env.chromeVersion ? `Chrome ${env.chromeVersion}` : env.ua.slice(0, 80)}`,
     `Web Serial: ${env.serial ? 'ja' : 'nein'}`,
     `WebUSB: ${env.webusb ? 'ja' : 'nein'}`,
+    `Native-App-Bridge: ${env.native ? 'ja (USB-Host-API aktiv)' : 'nein'}`,
     `USB-Serial nativ (Chrome>=148): ${env.serial && (!env.isAndroid || (env.chromeVersion ?? 0) >= 148) ? 'ja' : 'nein'}`,
     `HTTPS: ${env.secure ? 'ja' : 'nein'}`,
     `Modus: ${env.standalone ? 'standalone (APK/PWA)' : 'Browser-Tab'}`,

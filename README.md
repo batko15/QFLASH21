@@ -135,19 +135,23 @@ QFLASH21 läuft **direkt auf Android** – Chrome unterstützt Web Serial nativ 
 
 ---
 
-## 🖼️ weitere Screenshots
+## 🖼️ Weitere Screenshots
 
-| Übersicht | ECU-ID |
+| System-Check (v2) | DDE4-Konfigs |
 |---|---|
-| ![Übersicht](docs/screenshots/01-uebersicht.png) | ![ECU-ID](docs/screenshots/05-ecu-id.png) |
+| ![System-Check](docs/screenshots/08-system-check.png) | ![DDE4-Konfigs](docs/screenshots/07-konfigs.png) |
 
-| KI-Analyse | Flash |
+| Lesen/Schreiben | Protokoll-Log |
 |---|---|
-| ![KI-Analyse](docs/screenshots/04-ki-analyse.png) | ![Flash](docs/screenshots/07-flash.png) |
+| ![Lesen/Schreiben](docs/screenshots/09-lesen-schreiben.png) | ![Protokoll](docs/screenshots/09-protokoll.png) |
 
-| Jobs (mobil) | Live m. Bottom-Nav (mobil) |
+| KI-Analyse (Jobs) | Mobil (Bottom-Nav) |
 |---|---|
-| ![Jobs](docs/screenshots/08-jobs.png) | ![Mobil](docs/screenshots/10-mobil-live.png) |
+| ![KI-Analyse](docs/screenshots/04-ki-analyse.png) | ![Mobil](docs/screenshots/10-mobil-live.png) |
+
+| Mobil: System-Check | Mobil: Übersicht |
+|---|---|
+| ![Mobil System-Check](docs/screenshots/12-mobil-system-check.png) | ![Mobil Übersicht](docs/screenshots/01-uebersicht.png) |
 
 ---
 
@@ -195,24 +199,44 @@ Web Serial (FTDI 0403:6001)
   → Ident / DTC / Live / Security / Flash-Services (ISO 14230-2)
 ```
 
-### Android-APK (v1.3.1 – TWA, Start-Crash behoben)
+### Android-App v2.0.0 – ECHTE NATIVE APP (kein Browser, kein Chrome nötig)
 
-**Download:** `https://qflashk.vercel.app/apk/QFLASH21-v1.3.1.apk` (oder [apk/QFLASH21-v1.3.1.apk](apk/QFLASH21-v1.3.1.apk) im Repo).
+**Download:** `https://qflashk.vercel.app/apk/QFLASH21-v2.0.0.apk` (oder [apk/QFLASH21-v2.0.0.apk](apk/QFLASH21-v2.0.0.apk) im Repo / [GitHub Release v2.0.0](https://github.com/batko15/QFLASH21/releases/tag/v2.0.0)).
 
-Die APK ist eine echte **Trusted Web Activity** (AndroidX Browser Helper):
-fullscreen in Chrome, **kein URL-Balken** (Domain-Verifizierung via
-`/.well-known/assetlinks.json`), Web-Serial-fähig, WebView-Fallback ohne Chrome.
-Details, Installations-Schritte (inkl. MagicOS „Reiner Modus“ und Play Protect) und
-Build-Anleitung: **[apk/README.md](apk/README.md)**.
+**v2.0.0 ist eine vollwertige native Android-App** und ersetzt die TWA-Architektur
+(v1.x) komplett – nach den wiederholten „funktioniert nicht"-Problemen (Signaturkonflikt,
+Start-Crash durch fehlerhafte DEX-Zusammensetzung, TWA-/Chrome-Abhängigkeiten):
 
-> **v1.3.1 (versionCode 41)** behebt den Start-Absturz der v1.3.0: Die
-> `MainActivity` lag dort noch im alten Package `de.qflash21.launcher`, während das
-> Manifest bereits `de.qflash21.app.MainActivity` erwartete → `ClassNotFoundException`
-> → „App startet und schließt sofort“. Zusätzlich neu: nativer
-> **Fehlerbericht** (CrashActivity, deutsch, mit „Fehler kopieren“-Button) statt
-> stummem Verschwinden, WebView-Fallback ohne Chrome, APK von 2,6 MB auf 1,5 MB
-> verkleinert (versehentlich eingebetteter Eclipse-Compiler entfernt),
-> Build-Sicherheitsklemme verifiziert jetzt alle Manifest-Klassen im DEX.
+```
+┌─────────────────────────────────────────────────────────┐
+│  QFLASH21-App (de.qflash21.app, 100 KB, Android 7.0+)   │
+│                                                         │
+│  MainActivity (WebView)                                 │
+│   └─ lädt die gewohnte QFLASH21-Oberfläche              │
+│   └─ addJavascriptInterface("QfSerialBridge")           │
+│        │                                                │
+│  SerialBridge (Java, @JavascriptInterface)              │
+│   ├─ FtdiDriver   FT232R/FT231X  (0403:6001/6015)       │
+│   ├─ Ch340Driver  CH340/CH341    (1a86:7523)            │
+│   └─ Cp2102Driver CP2102         (10c4:ea60)            │
+│        │                                                │
+│  Android USB-Host-API (UsbManager/bulkTransfer)         │
+│   └─ K+DCAN-Kabel direkt per USB-OTG ✓                  │
+└─────────────────────────────────────────────────────────┘
+```
+
+- **Kein Chrome, keine Web-Serial-API, keine Domain-Verifizierung** – die USB-Serial-
+  Treiber laufen NATIV (Baudraten-/BREAK-Mathematik 1:1 aus dem Linux-Kernel:
+  `ftdi_sio.c`, `ch341.c`, `cp210x.c`; identisch zur WebUSB-Portierung der Web-App).
+- Die Web-App erkennt die Bridge automatisch (`window.QfSerialBridge`) und nutzt sie
+  als bevorzugten Verbindungsweg (`src/lib/kwp/native-bridge.ts`).
+- Nativer **deutscher Fehlerbericht** bei jedem Crash (Stacktrace + „Fehler kopieren").
+- 5-Baud-Init über natives BREAK (FTDI SET_DATA Bit 14 / CH340 Registerpaar 0x1805 /
+  CP210x SET_BREAK), 10400/38400/125000 Baud.
+- **Legacy:** TWA-APK v1.3.1 bleibt als Fallback verfügbar
+  ([apk/QFLASH21-v1.3.1.apk](apk/QFLASH21-v1.3.1.apk)).
+- Details, Installations-Schritte (inkl. MagicOS „Reiner Modus") und Build-Anleitung:
+  **[apk/README.md](apk/README.md)**.
 
 ### Tuning-Wissen (EDC15C4/DDE 4.0)
 

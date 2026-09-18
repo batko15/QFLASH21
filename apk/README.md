@@ -1,16 +1,48 @@
-# QFLASH21 Android-APK (v1.3.1 – Start-Crash behoben)
+# QFLASH21 Android-APK
 
-## Downloads
+## v2.0.0 – ECHTE NATIVE APP (empfohlen, ersetzt alle TWA-Versionen)
 
 | Datei | Zweck |
 |---|---|
-| `QFLASH21-v1.3.1.apk` | **Empfohlen**: Trusted Web Activity (fullscreen in Chrome, kein URL-Balken) |
-| Web-Direktlink | `https://qflashk.vercel.app/apk/QFLASH21-v1.3.1.apk` |
-| GitHub Release | `https://github.com/batko15/QFLASH21/releases/tag/v1.3.1` |
+| `QFLASH21-v2.0.0.apk` | **Empfohlen**: Native App mit eigener USB-Treiberschicht (FTDI/CH340/CP2102) |
+| Web-Direktlink | `https://qflashk.vercel.app/apk/QFLASH21-v2.0.0.apk` |
+| GitHub Release | `https://github.com/batko15/QFLASH21/releases/tag/v2.0.0` |
 
-> Die App rendert die Seite über **Chrome** (Trusted Web Activity) – nur dort ist
-> **Web Serial** (K-Line-Adapter per USB-OTG) verfügbar. Bei verifizierter Domain
-> (`/.well-known/assetlinks.json`) läuft die App **fullscreen ohne Browserleiste**.
+### Architektur v2.0.0 (versionCode 50, ~100 KB, Android 7.0+)
+
+```
+MainActivity (WebView → qflashk.vercel.app)
+  └─ SerialBridge  (addJavascriptInterface → window.QfSerialBridge)
+       ├─ FtdiDriver    SIO-Requests 1:1 aus ftdi_sio.c  (Reset/Purge/Baud/SET_DATA/Latency/DTR-RTS)
+       ├─ Ch340Driver   ch341.c-Register (0x5F/0xA1/0x9A·0x1312/0x2518/0xA4, BREAK 0x1805)
+       └─ Cp2102Driver  cp210x.c-Requests (0x1E Baud u32-LE, 0x03 LINE_CTL, 0x07 MHS, 0x16 BREAK)
+            └─ Android USB-Host-API (UsbManager → bulkTransfer) → K+DCAN per USB-OTG
+```
+
+- **Kein Chrome, kein Web Serial, kein Custom Tabs, keine assetlinks-Verifikation** –
+  die App spricht das Kabel direkt über die Android USB-Host-API an.
+- Weboberfläche (gleiche App-UI) erkennt `window.QfSerialBridge` und bevorzugt die
+  native Bridge vor Web Serial/WebUSB (`src/lib/kwp/native-bridge.ts`).
+- 5-Baud-Init nativ über BREAK; RX-Pump-Thread mit Ringpuffer (64 KB, FTDI/CH340-
+  Status-Byte-Stripping); USB-Detach-Event an die Seite (`qf-usb-detach`).
+- USB-Berechtigung per Systemdialog (Broadcast-Latch, 20 s Timeout).
+- Gleiche Paket-ID `de.qflash21.app` + Signatur `6c62fd…` wie v1.3.x → sauberes Upgrade.
+- Build: `scripts/build-native-apk.sh` (aapt2 → ecj/javac → d8 → DEX-Klassen-Verifikation
+  → zipalign → apksigner). Quellcode: `apk-src/java/de/qflash21/app/` (8 Klassen,
+  reine Framework-APIs – KEINE externen Bibliotheken).
+
+### Installation v2.0.0
+
+1. APK herunterladen und öffnen (Dateimanager → Downloads). Upgrade über v1.3.x direkt möglich.
+2. MagicOS (Honor): ggf. „Reiner Modus" (Pure Mode) deaktivieren – blockiert Sideloads.
+3. Play-Protect-Hinweis mit „Trotzdem installieren" bestätigen.
+4. K+DCAN-Kabel per USB-OTG anschließen → App öffnet → Tab „Verbindung" → „Verbinden"
+   → beim ersten Mal USB-Berechtigung bestätigen.
+5. Tab „System-Check" zeigt **„Bereit – Native-App-Modus (USB-Host-API)"** (grün).
+
+---
+
+## Legacy: TWA-Versionen v1.0–v1.3.1
 
 ## Warum v1.3.1? (Fehler-Chronik)
 

@@ -1,24 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="de.qflash21.app"
-    android:versionCode="41"
-    android:versionName="1.3.1">
+    android:versionCode="50"
+    android:versionName="2.0.0">
 
   <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34"/>
 
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
-  <!-- Provider-Erkennung: TWA-fähige Browser (Chrome) + beliebige Browser als Fallback -->
-  <queries>
-    <intent>
-      <action android:name="android.support.customtabs.action.CustomTabsService"/>
-    </intent>
-    <intent>
-      <action android:name="android.intent.action.VIEW"/>
-      <data android:scheme="https"/>
-    </intent>
-  </queries>
+  <!-- USB-Host: D+KCAN-Kabel (FTDI/CH340/CP2102) direkt per Android USB-Host-API.
+       required=false: App bleibt auf Geräten ohne USB-Host installierbar. -->
+  <uses-feature android:name="android.hardware.usb.host" android:required="false"/>
 
   <application
       android:name=".QfApp"
@@ -29,25 +22,21 @@
       android:usesCleartextTraffic="false"
       android:theme="@android:style/Theme.Material.NoActionBar">
 
-    <!-- Trusted Web Activity: rendert qflashk.vercel.app fullscreen in Chrome
-         (Web Serial verfügbar). Verifizierung über
-         https://qflashk.vercel.app/.well-known/assetlinks.json
-
-         v1.3.0: NEUE applicationId de.qflash21.app – die alte ID de.qflash21.launcher
-         hatte einen anderen Signaturschlüssel (v1.0–v1.1), was Upgrades mit
-         „App wurde nicht installiert" blockierte. Installiert daher neben allen
-         älteren Versionen konfliktfrei.
-
-         v1.3.1 KRITISCHER FIX: MainActivity liegt jetzt WIRKLICH im Package
-         de.qflash21.app (v1.3.0 hatte sie noch unter de.qflash21.launcher im
-         DEX → ClassNotFoundException → „startet und schließt sofort").
+    <!--
+      v2.0.0 – ECHTE NATIVE APP (ersetzt die TWA-Architektur v1.x):
+      - WebView lädt die QFLASH21-Weboberfläche
+      - SerialBridge (window.QfSerialBridge) exponiert die Android USB-Host-API
+        → FTDI FT232R/FT231X, CH340, CP2102 NATIV, ohne Chrome / Web Serial / TWA
+      - Kein Custom-Tabs-, kein assetlinks-, kein Chrome-Version-Abhängigkeit mehr
+      - Gleiche Paket-ID + Signatur wie v1.3.1 → sauberes Upgrade
+      - QfApp: globaler Crash-Handler → nativer deutscher Fehlerbericht
     -->
     <activity
         android:name=".MainActivity"
         android:exported="true"
         android:launchMode="singleTask"
         android:windowSoftInputMode="adjustResize"
-        android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode">
+        android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode|density">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
@@ -60,30 +49,10 @@
       </intent-filter>
     </activity>
 
-    <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL"
-        android:value="https://qflashk.vercel.app/"/>
-    <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
-        android:value="#09090B"/>
-    <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR_DARK"
-        android:value="#000000"/>
-    <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
-        android:value="#09090B"/>
-    <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR_DARK"
-        android:value="#000000"/>
-    <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BGCOLOR"
-        android:value="#09090B"/>
-    <!-- Ohne verifizierte Domain oder ohne Chrome: eingebetteter WebView-Fallback,
-         damit die App NIE sofort schließt (Web Serial erst in Chrome verfügbar –
-         der WebView zeigt dann den Hinweis „In Chrome öffnen" aus der Web-App). -->
-    <meta-data android:name="android.support.customtabs.trusted.FALLBACK_STRATEGY"
-        android:value="webview"/>
-
-    <!-- Nativer Fallback (browserhelper): WebView-Rendering ohne Chrome -->
+    <!-- Nativer deutscher Fehlerbericht (auch ohne WebView lauffähig) -->
     <activity
-        android:name="com.google.androidbrowserhelper.trusted.WebViewFallbackActivity"
+        android:name=".CrashActivity"
         android:exported="false"
-        android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode"/>
-
-    <!-- Deutscher Fehlerbericht statt stummem Verschwinden (siehe QfApp.java) -->
+        android:excludeFromRecents="true"/>
   </application>
 </manifest>
