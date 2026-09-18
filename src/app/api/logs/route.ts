@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
+  if (!process.env.DATABASE_URL) {
+    return NextResponse.json(
+      { error: 'Datenbank nicht konfiguriert (DATABASE_URL fehlt)', degraded: true },
+      { status: 503 }
+    );
+  }
   try {
     const body = await req.json();
     const operation = String(body.operation ?? '').slice(0, 64);
@@ -27,6 +33,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  if (!process.env.DATABASE_URL) {
+    return NextResponse.json(
+      { error: 'Datenbank nicht konfiguriert (DATABASE_URL fehlt)', degraded: true, logs: [], stats: [] },
+      { status: 503 }
+    );
+  }
   try {
     const limitParam = req.nextUrl.searchParams.get('limit');
     const limit = Math.min(Math.max(Number(limitParam ?? 50), 1), 200);
