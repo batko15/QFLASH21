@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dialog';
 import { useFlasher, type JobResult } from '@/store/flasher';
 import { JOBS, type EcuJob } from '@/lib/kwp/dde4';
+import { DEEP_OBD_JOBS, DEEP_OBD_MWB } from '@/lib/kwp/deepobd-knowledge';
 import { cn } from '@/lib/utils';
 
 const KIND_META: Record<
@@ -196,6 +197,52 @@ export function JobsPanel() {
             </div>
           </CardContent>
         )}
+      </Card>
+
+      {/* DeepOBD-Referenz (public Konfig-Repos, Task 9-a) */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Info className="h-4 w-4 text-primary" aria-hidden />
+            DeepOBD-Job-Referenz (Bosch-Konvention)
+          </CardTitle>
+          <CardDescription>
+            STATUS_-Jobs und Messwertblock-Formeln aus öffentlichen DeepOBD-Konfigs
+            (MS45.1/DDE5-Referenz – Namenskonvention, nicht DDE4-Daten).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="max-h-44 space-y-1.5 overflow-y-auto pr-2 custom-scrollbar" aria-label="DeepOBD-Job-Referenz">
+            {DEEP_OBD_JOBS.map((j) => (
+              <div key={j.name} className="flex items-start gap-2 rounded-lg border p-2 text-xs">
+                <Badge variant="secondary" className="shrink-0 font-mono">
+                  {j.name}
+                </Badge>
+                <span className="min-w-0 text-muted-foreground">
+                  {j.description}
+                  {j.group ? ` · ${j.group}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+          <details className="group">
+            <summary className="cursor-pointer list-none text-xs font-medium text-primary hover:underline">
+              Messwertblock-Formeln aus d_motor (DDE5-Referenz, {DEEP_OBD_MWB.length} Einträge) anzeigen
+            </summary>
+            <div className="mt-2 max-h-44 space-y-1.5 overflow-y-auto pr-2 custom-scrollbar">
+              {DEEP_OBD_MWB.map((m) => (
+                <div key={`${m.lid}-${m.name}`} className="rounded-lg border p-2 text-xs">
+                  <p className="font-medium">
+                    {m.name} <span className="text-muted-foreground">· Einheit {m.unit}</span>
+                  </p>
+                  {m.formula && (
+                    <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{m.formula}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </details>
+        </CardContent>
       </Card>
 
       {/* Historie */}

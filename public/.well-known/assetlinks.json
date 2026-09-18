@@ -1,8 +1,18 @@
-[{
-  "relation": ["delegate_permission/common.handle_all_urls"],
-  "target": {
-    "namespace": "android_app",
-    "package_name": "de.qflash21.launcher",
-    "sha256_cert_fingerprints": ["6C:62:FD:BC:A4:83:57:15:77:A3:98:16:23:F0:EB:03:70:7A:A3:CA:41:28:2B:54:F7:5E:F1:18:96:31:CA:7E"]
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "de.qflash21.app",
+      "sha256_cert_fingerprints": ["6C:62:FD:BC:A4:83:57:15:77:A3:98:16:23:F0:EB:03:70:7A:A3:CA:41:28:2B:54:F7:5E:F1:18:96:31:CA:7E"]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "de.qflash21.launcher",
+      "sha256_cert_fingerprints": ["6C:62:FD:BC:A4:83:57:15:77:A3:98:16:23:F0:EB:03:70:7A:A3:CA:41:28:2B:54:F7:5E:F1:18:96:31:CA:7E"]
+    }
   }
-}]
+]

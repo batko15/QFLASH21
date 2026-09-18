@@ -16,6 +16,7 @@ import {
   Save,
   ShieldCheck,
   ScrollText,
+  Stethoscope,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -31,6 +32,7 @@ import { DtcPanel } from '@/components/qf/dtc-panel';
 import { LivePanel } from '@/components/qf/live-panel';
 import { JobsPanel } from '@/components/qf/jobs-panel';
 import { TuningPanel } from '@/components/qf/tuning-panel';
+import { SystemCheckPanel } from '@/components/qf/system-check-panel';
 import { FlashPanel } from '@/components/qf/flash-panel';
 import { ChecksumPanel } from '@/components/qf/checksum-panel';
 import { LogPanel } from '@/components/qf/log-panel';
@@ -46,6 +48,7 @@ const TABS: { value: string; label: string; short: string; icon: LucideIcon; mob
   { value: 'live', label: 'Live-Daten', short: 'Live', icon: Gauge, mobile: true },
   { value: 'jobs', label: 'Jobs', short: 'Jobs', icon: Wrench, mobile: true },
   { value: 'tuning', label: 'Tuning-Wissen', short: 'Tuning', icon: SlidersHorizontal, mobile: true },
+  { value: 'check', label: 'System-Check', short: 'Check', icon: Stethoscope, mobile: true },
   { value: 'flash', label: 'Lesen/Schreiben', short: 'Flash', icon: Save },
   { value: 'pruefsumme', label: 'Prüfsumme', short: 'Prüf', icon: ShieldCheck },
   { value: 'protokoll', label: 'Protokoll', short: 'Protokoll', icon: ScrollText },
@@ -140,6 +143,9 @@ export function QfApp() {
           <TabsContent value="tuning">
             <TuningPanel />
           </TabsContent>
+          <TabsContent value="check">
+            <SystemCheckPanel />
+          </TabsContent>
           <TabsContent value="flash">
             <FlashPanel />
           </TabsContent>
@@ -160,7 +166,7 @@ export function QfApp() {
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur sm:hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="grid grid-cols-6">
+        <div className="grid grid-cols-7">
           {TABS.filter((t) => t.mobile).map((t) => {
             const active = tab === t.value;
             return (

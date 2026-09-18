@@ -10,6 +10,7 @@ import { create } from 'zustand';
 import { toast } from 'sonner';
 
 import { SerialClient, isWebSerialSupported, isAndroid, portKindFromInfo, DDE4_KEYWORDS } from '@/lib/kwp/serial-client';
+import { isWebUsbSupported, requestWebUsbDevice, WebUsbSerialPort, driverLabel } from '@/lib/kwp/webusb-serial';
 import { reportOperationSupabase } from '@/lib/supabase-log';
 import { MockSerialPort } from '@/lib/kwp/mock';
 import { DDE4, IDENT_SERVICES, LIVE_BLOCKS, liveBlockById, parseDtcResponse, OUTPUT_LABELS, EWS_VERIFY_TEXT } from '@/lib/kwp/dde4';
@@ -156,7 +157,8 @@ let keepAliveFailures = 0;
 let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let visibilityHooked = false;
-let lastPort: Awaited<ReturnType<typeof SerialClient.requestPort>> | null = null;
+let lastPort: QfSerialPort | SerialPort | null = null;
+let lastPortPath: 'webserial' | 'webusb' | null = null;
 let lastPortLabel = '–';
 let logCounter = 0;
 const MAX_LOGS = 600;
@@ -365,7 +367,7 @@ export const useFlasher = create<FlasherState>((set, get) => ({
         ? stored.livePage.filter((id) => LIVE_BLOCKS.some((b) => b.id === id))
         : [];
     set({
-      supported: isWebSerialSupported(),
+      supported: isWebSerialSupported() || isWebUsbSupported(),
       android: isAndroid(),
       ...(stored.baudRate ? { baudRate: stored.baudRate } : {}),
       ...(stored.vehicle ? { vehicle: stored.vehicle } : {}),
@@ -434,16 +436,29 @@ export const useFlasher = create<FlasherState>((set, get) => ({
 
   connectReal: async () => {
     if (get().connection === 'connected' || get().connection === 'connecting') return;
-    if (!isWebSerialSupported()) {
-      toast.error('Web Serial nicht verfügbar', {
-        description: 'Chrome/Edge ≥ 89 nötig (Android: Chrome über USB-C-OTG).',
+    const webSerialOk = isWebSerialSupported();
+    const webUsbOk = isWebUsbSupported();
+    if (!webSerialOk && !webUsbOk) {
+      toast.error('Web Serial/WebUSB nicht verfügbar', {
+        description: 'Chrome/Edge nötig (Android: USB-C-OTG). Firefox/Samsung Internet werden nicht unterstützt.',
       });
       return;
     }
     set({ connection: 'connecting', initSteps: [], keywords: null, isMock: false });
     const t0 = Date.now();
     try {
-      const port = await SerialClient.requestPort();
+      // Pfad 1: Web Serial (Chrome Android ≥ 148 für USB); Pfad 2: WebUSB-Fallback (jedes Android-Chrome)
+      let port: QfSerialPort | SerialPort;
+      if (webSerialOk) {
+        port = await SerialClient.requestPort();
+        lastPortPath = 'webserial';
+      } else {
+        const dev = await requestWebUsbDevice();
+        const wu = new WebUsbSerialPort(dev);
+        port = wu;
+        lastPortPath = 'webusb';
+        get().log('info', `WebUSB-Fallback aktiv: ${driverLabel(wu.driverKind)} (Web Serial ohne USB-Support) `);
+      }
       lastPort = port;
       reconnectAttempts = 0;
       client = new SerialClient();
@@ -467,7 +482,8 @@ export const useFlasher = create<FlasherState>((set, get) => ({
       client.config.baudRate = get().baudRate;
       await client.connect(port);
       const info = portKindFromInfo(port.getInfo());
-      const steps: string[] = [`Port geöffnet: ${info.label} @ ${get().baudRate} Bd`];
+      const pathNote = lastPortPath === 'webusb' ? ' · WebUSB' : '';
+      const steps: string[] = [`Port geöffnet: ${info.label} @ ${get().baudRate} Bd${pathNote}`];
       set({ connection: 'initializing', portLabel: info.label, initSteps: steps });
 
       const kw = await client.fiveBaudInit(DDE4.ecuAddress);

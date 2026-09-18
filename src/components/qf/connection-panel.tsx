@@ -61,9 +61,9 @@ export function ConnectionPanel() {
 
   async function handleConnect() {
     if (!supported) {
-      toast.error('Web Serial nicht verfügbar', {
+      toast.error('Web Serial/WebUSB nicht verfügbar', {
         description:
-          'Android: Chrome ≥ 138 erforderlich. Desktop: Chrome/Edge ≥ 89. iOS/Safari wird nicht unterstützt.',
+          'Google Chrome verwenden (Android: per USB-C-OTG nutzbar). iOS/Samsung Internet/Firefox werden nicht unterstützt.',
       });
       return;
     }

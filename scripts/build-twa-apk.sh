@@ -23,10 +23,10 @@ BUILD="$SRC_DIR/build"
 LIBS="$SRC_DIR/libs"
 BT="${BT:-/home/z/android-build/tools/android-14}"
 AJ="${AJ:-/home/z/android-build/tools/android-34/android.jar}"
-KS="$SRC_DIR/qflash21-v12.keystore"
+KS="${KS:-$SRC_DIR/qflash21-v12.keystore}"
 KS_ALIAS="qflash21"
 KS_PASS="${KS_PASS:-Qflash21-2026!Twa}"
-OUT_APK="QFLASH21-v1.2.0.apk"
+OUT_APK="${OUT_APK:-QFLASH21-v1.3.0.apk}"
 
 # AARs entpacken (classes.jar/res), falls noch nicht geschehen
 ensure_lib() {

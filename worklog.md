@@ -268,3 +268,27 @@ Stage Summary:
 - Nutzer-PDFs vollständig in App + Repo integriert (Tuning-Tab, DTC 4496, docs/EDC15C4-KI-AGENT.md).
 - Nächste Schritte: Nutzer-Installations-Test am Honor Magic Pro 8 (Feedback erbeten); Fahrzeug-Realtest 5-Baud-Init (Keywords 6B/8F loggen); ggf. APK v1.2.1 bei Feedback; DeepOBD-Datei immer noch nicht angekommen (Upload-Kanal).
 
+
+---
+Task ID: 9-a
+Agent: general-purpose (Research Runde 2)
+Task: DeepOBD-Konfig-Repos auswerten + GitHub-Deepweb-Search Runde 2
+
+Work Log:
+- worklog.md (Task 7/7-a/7-b/8) gelesen. 4 lokale Klons ausgewertet: Dekon01_DeepObdE46Config, kmalinich_deepobd-configs, ediabaslib (BmwDeepObd-App-Quelle), BimmerDis; alle `sgbd=`-Referenzen gesammelt (117 eindeutige), Translation.xml.zip entpackt (LEER: nur `<LanguageCache />`), alle .ccpage/.ccpages/.xsd/Code-Dateien gesichtet.
+- **Kernbefund DDE4:** In ALLEN Klons existieren KEINE DDE4/EDC15C4-Daten: kein .prg/SGBD (E46-Repo nur Benziner MS430DS0/MSS52, ediabaslib-Xml nur d_motor = DDE5+ CAN, BimmerDis nur ME9/MS430), keine Fehlernummern→Klartext-Tabellen (Texte stecken proprietär im SGBD), keine DDE4-MWB-args. B803819/DME_DDE.ccpage (sgbd MS450DS0) ist laut repo-eigener Errors.ccpage „MS45.1" = BENZIN – nicht als DDE4 misszuverstehen.
+- Verifiziert extrahiert → src/lib/kwp/deepobd-knowledge.ts: DEEP_OBD_DTC_TEXTS = {} (absichtlich leer, Zero-Trust), DEEP_OBD_ERROR_RESULTS (32 F_*-Feldnamen des read_errors-Rasters aus Dekon01/B803819 – passt zum 28-Byte-FSP-Eintrag Bosch-PDF), DEEP_OBD_JOBS (10 Einträge/13 Jobs, MS45.1 gelabelt), DEEP_OBD_MWB (30 Einträge aus d_motor/DDE5-ccpage mit args-Namen, Einheiten, C#-Umrechnungsformeln: UBATT2/1000, Raildruck ×14.5038 bar→psi, LADEDRUCK −1007 hPa, DPF /1000), DEEP_OBD_TRANSLATION_KEY_FORMAT (!JOB#…/!ECU#…), DEEP_OBD_SOURCE_INFO.
+- Web-Research: 8 z-ai-web_search-Abfragen (429-Drossel → sequenziell) + 5 GitHub-API-Suchen (search/repositories) + MDN browser-compat-data/api/Serial.json + caniuse-Raw verifiziert. Artefakte /tmp/qf9a/search/ (q1–q8, gh_*, bcd.json); Suche in q1.json/q2.json versehentlich im Projektroot gelandet → sofort nach /tmp/qf9a/search verschoben (Projekt unberührt).
+- Ergebnisbericht → docs/research/github-findings-2.md (Repos-Tabelle, Top-5-Integrationen, 3 Web-Serial-Fakten mit URLs, offene Lücken).
+- Qualität: tsc --noEmit 0 Fehler (nach Fix eines `*/`-Trimming in einem JSDoc), eslint sauber. KEINE weiteren Projektdateien angerührt.
+
+Stage Summary:
+- deepobd-knowledge.ts: 0 DTC-Texte (explizit begründet: keine in öffentlichen DeepOBD-Repos existent), 32 Fehler-Result-Feldnamen, 10 Job-Einträge, 30 MWB-Einträge, alle mit Quellen-Provenienz – nichts erfunden.
+- Top-Neufunde: LeZed97/ZedSuite (★120, EDC15/16-Map-Editor, 100% lokal), NickTullos/edc15vm-flash-editor (DTC-Discovery aus Flash-Dumps → auf 23 Mursteinen-Dumps übertragbar!), paceworx-store/EDC15C13-Checksum-Correction + mtx-electronics/vag-checksum-fix (C4-Schwester-Checksummen), SchoepsLabs/webserial-android (Fallback <Chrome 148), muki01/OBD2_K-line_Reader (★204).
+- Web Serial Android (verifiziert via MDN BCD): Chrome Android 138–147 = NUR Bluetooth-RFCOMM (partial), volle USB/OTG-Serial erst ab 148; Android WebView: nie (→ TWA-Architektur von v1.2.0 korrekt); Workaround vor 148 = WebUSB-Polyfill (VID/PID-Limit, OTG-Init-Reihenfolge-Quirk).
+
+Nächste Schritte:
+1. DTC-Discovery (à la edc15vm-flash-editor) über die 23 lokal liegenden EDC15C4-Dumps laufen lassen → echte 4407/17xx-Tabelle generieren.
+2. EDC15C13-Checksum-Algorithmus gegen QFLASH21 checksum.ts differ-testen.
+3. README-Toolbox um ZedSuite/OBD2_K-line_Reader/SchoepsLabs ergänzen; Android-Guide um Chrome-148-Anforderung (USB-Serial) erweitern.
+4. DeepOBD.rar weiterhin nie angekommen – Ersatz jetzt weitgehend obsolet, da öffentliche Repos für DDE4 nichts Mehrwertendes enthalten (SGBD bleibt einziger Weg für Klartexte).

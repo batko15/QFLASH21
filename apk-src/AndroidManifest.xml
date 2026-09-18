@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="de.qflash21.launcher"
-    android:versionCode="3"
-    android:versionName="1.2.0">
+    package="de.qflash21.app"
+    android:versionCode="40"
+    android:versionName="1.3.0">
 
   <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34"/>
 
@@ -30,7 +30,13 @@
 
     <!-- Trusted Web Activity: rendert qflashk.vercel.app fullscreen in Chrome
          (Web Serial verfügbar). Verifizierung über
-         https://qflashk.vercel.app/.well-known/assetlinks.json -->
+         https://qflashk.vercel.app/.well-known/assetlinks.json
+
+         v1.3.0: NEUE applicationId de.qflash21.app – die alte ID de.qflash21.launcher
+         hatte einen anderen Signaturschlüssel (v1.0–v1.1), was Upgrades mit
+         „App wurde nicht installiert" blockierte. Installiert daher neben allen
+         älteren Versionen konfliktfrei.
+    -->
     <activity
         android:name=".MainActivity"
         android:exported="true"

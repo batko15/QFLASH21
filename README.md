@@ -181,18 +181,22 @@ Web Serial (FTDI 0403:6001)
   → Ident / DTC / Live / Security / Flash-Services (ISO 14230-2)
 ```
 
-### Android-APK (v1.2.0 – TWA)
+### Android-APK (v1.3.0 – TWA, neue applicationId)
 
-**Download:** `https://qflashk.vercel.app/apk/QFLASH21-v1.2.0.apk` (oder [apk/QFLASH21-v1.2.0.apk](apk/QFLASH21-v1.2.0.apk) im Repo).
+**Download:** `https://qflashk.vercel.app/apk/QFLASH21-v1.3.0.apk` (oder [apk/QFLASH21-v1.3.0.apk](apk/QFLASH21-v1.3.0.apk) im Repo).
 
-Seit **v1.2.0** ist die APK eine echte **Trusted Web Activity** (AndroidX Browser Helper):
+Die APK ist eine echte **Trusted Web Activity** (AndroidX Browser Helper):
 fullscreen in Chrome, **kein URL-Balken** (Domain-Verifizierung via
 `/.well-known/assetlinks.json`), Web-Serial-fähig, Fallback Custom Tab. Details,
 Installations-Schritte (inkl. MagicOS „Reiner Modus“ und Play Protect) und Build-Anleitung:
 **[apk/README.md](apk/README.md)**.
 
-> ⚠️ Bei Update von einer älteren APK (≤ v1.1.0): erst **deinstallieren** – v1.2.0 nutzt eine
-> neue Signatur.
+> **v1.3.0** verwendet die neue Paket-ID `de.qflash21.app` und installiert dadurch
+> **konfliktfrei neben/alles über** die alten Versionen (v1.0–v1.2 hatten einen anderen
+> Signaturschlüssel → „App wurde nicht installiert“). Alte QFLASH21-Apps danach deinstallieren.
+> Neu: In der App prüft der Tab **„System-Check“** alle Voraussetzungen (Web Serial,
+> Chrome-Version, WebUSB-Fallback, HTTPS, App-Modus) und erzeugt einen kopierbaren
+> Diagnose-Bericht.
 
 ### Tuning-Wissen (EDC15C4/DDE 4.0)
 
